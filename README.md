@@ -3,6 +3,8 @@
 ## Descripción
 Podofilo V2 es una modernización completa de la aplicación original (Aplicacion Interna de Extranjería en Tenerife desarrollada por **Jaime Velasco Juan bajo licencia GNU** - General Public License v3.0), reconstruida con Python 3.12+ (compatible con 3.14) y librerías modernas. Diseñada como una herramienta de "núcleo abierto" (Open Core), permite la gestión avanzada de documentación de expedientes de extranjería, con capacidad de extenderse mediante plugins para integraciones específicas (como el sistema OVE).
 
+![Podofilo V2](resources/image1.png)
+
 ## Arquitectura Open Core
 Esta versión introduce una arquitectura modular que separa el núcleo de la aplicación de las integraciones propietarias:
 
