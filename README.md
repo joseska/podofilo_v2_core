@@ -1,7 +1,7 @@
 # Podofilo V2 - Gestor de PDFs para Extranjería (Open Core)
 
 ## Descripción
-Podofilo V2 es una modernización completa de la aplicación original, reconstruida con Python 3.12+ (compatible con 3.14) y librerías modernas. Diseñada como una herramienta de "núcleo abierto" (Open Core), permite la gestión avanzada de documentación de expedientes de extranjería, con capacidad de extenderse mediante plugins para integraciones específicas (como el sistema OVE).
+Podofilo V2 es una modernización completa de la aplicación original (Aplicacion Interna de Extranjería en Tenerife desarrollada por **Jaime Velasco Juan bajo licencia GNU** - General Public License v3.0), reconstruida con Python 3.12+ (compatible con 3.14) y librerías modernas. Diseñada como una herramienta de "núcleo abierto" (Open Core), permite la gestión avanzada de documentación de expedientes de extranjería, con capacidad de extenderse mediante plugins para integraciones específicas (como el sistema OVE).
 
 ## Arquitectura Open Core
 Esta versión introduce una arquitectura modular que separa el núcleo de la aplicación de las integraciones propietarias:
@@ -61,3 +61,7 @@ podofilo_v2/
 ### V2.Optimización (Diciembre 2025)
 - **Rendimiento**: Zoom instantáneo, startup ultrarrápido (<3s).
 - **Estabilidad**: Solución a problemas de enfoque y visualización.
+
+## Licencia
+Este proyecto está licenciado bajo la **GNU General Public License v3.0**.
+Consulte el archivo [LICENSE](LICENSE) para ver el texto completo de la licencia.
