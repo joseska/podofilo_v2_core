@@ -1,0 +1,41 @@
+# Podofilo V2 - Modern Requirements (Python 3.12+)
+
+# UI Framework
+customtkinter>=5.2.0    # Modern Tkinter UI
+pillow>=10.1.0          # Image handling
+
+# PDF Processing
+PyMuPDF>=1.23.0         # PDF manipulation (replaces rupdf)
+# pikepdf>=8.10.0         # PDF metadata and structure # Parece no estarse utilizando. lo deshabilito por ahora
+
+# Analysis
+# opencv-python>=4.9.0    # Image processing. por ahora no lo estoy usando. lo quito para bajar peso del ejecutable.
+# pyzbar>=0.1.9           # Barcode reading (pure Python)
+# numpy>=1.26.0           # Numerical operations
+
+# Server Communication
+
+# Server Communication
+playwright>=1.40.0        # Browser automation (Reemplaza a Selenium)
+httpx>=0.27.0             # Async HTTP (reemplaza aiohttp)
+pypac>=0.16.0             # Proxy PAC support
+lxml>=5.0.0               # HTML parsing
+# Py3AMF>=0.8.5             # AMF protocol (Reemplazo moderno de pyamf compatible con Py3.12)
+# yarl>=1.9.0               # URL parsing
+
+# UI Utilities
+tkinterdnd2>=0.3.0      # Drag and Drop for Tkinter
+
+# Credentials
+keyring>=25.0.0         # Secure credential storage (Windows Credential Manager)
+
+# File Operations
+watchdog>=3.0.0         # File system monitoring
+# aiofiles>=23.2.0        # Async file operations
+
+# Utilities
+python-dateutil>=2.8.2
+# requests>=2.31.0
+
+# Development
+pyinstaller>=6.3.0      # Executable packaging

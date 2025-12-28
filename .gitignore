@@ -1,0 +1,53 @@
+# Carpeta de la V1 de Podofilo. solo para referencias.
+V1/
+tests/
+
+# OVE Plugin (Private)
+src/extensions/ove/
+
+# Python bytecode / cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.env
+.env.local
+.venv/
+venv/
+env/
+
+# Build / distribution artifacts
+build/
+dist/
+sdist/
+downloads/
+*.egg-info/
+*.egg
+*.manifest
+# *.spec
+
+# Testing / coverage
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+coverage.xml
+.coverage*
+htmlcov/
+
+# Logs & temp files
+*.log
+*.tmp
+
+# Selenium drivers & downloads
+chromedriver*
+geckodriver*
+msedgedriver*
+selenium-downloads/
+geckodriver.log
+
+# IDE / editor settings
+.idea/
+.vscode/
+.DS_Store
+

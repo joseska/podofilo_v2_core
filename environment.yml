@@ -1,0 +1,27 @@
+# Podofilo V2 - Conda Environment Configuration
+name: podofilo_v2
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  - python=3.14
+  - pip
+  - pip:
+    - customtkinter>=5.2.0
+    - pillow>=10.1.0
+    - PyMuPDF>=1.23.0
+    # - pikepdf>=8.10.0
+    - opencv-python>=4.9.0
+    - pyzbar>=0.1.9
+    # - numpy>=1.26.0
+    - playwright>=1.40.0
+    - httpx>=0.27.0
+    - pypac>=0.16.0
+    - Py3AMF>=0.8.5
+    - lxml>=5.0.0
+    - keyring>=25.0.0
+    - watchdog>=3.0.0
+    - aiofiles>=23.2.0
+    - python-dateutil>=2.8.2
+    - requests>=2.31.0
+    - pyinstaller>=6.3.0
