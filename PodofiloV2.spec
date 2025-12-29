@@ -7,15 +7,16 @@ BASE_DIR = Path.cwd()
 SRC_DIR = BASE_DIR / "src"
 
 # Obtener ruta del driver de Playwright
-def get_playwright_driver_path():
-    try:
-        import playwright
-        pw_path = Path(playwright.__file__).parent / "driver"
-        if pw_path.exists():
-            return str(pw_path)
-    except:
-        pass
-    return None
+# # Obtener ruta del driver de Playwright
+# def get_playwright_driver_path():
+#     try:
+#         import playwright
+#         pw_path = Path(playwright.__file__).parent / "driver"
+#         if pw_path.exists():
+#             return str(pw_path)
+#     except:
+#         pass
+#     return None
 
 def _collect_datas():
     datas = []
@@ -29,10 +30,10 @@ def _collect_datas():
     add_path("resources", "resources")
 
     
-    # Driver de Playwright (CRITICO para que funcione)
-    pw_driver = get_playwright_driver_path()
-    if pw_driver:
-        datas.append((pw_driver, "playwright/driver"))
+    # # Driver de Playwright (CRITICO para que funcione)
+    # pw_driver = get_playwright_driver_path()
+    # if pw_driver:
+    #     datas.append((pw_driver, "playwright/driver"))
     
     return datas
 
@@ -45,35 +46,35 @@ hidden_imports = [
     "tkinterdnd2",
     "PIL._tkinter_finder",
     # Playwright y async
-    "playwright",
-    "playwright.async_api",
-    "playwright.sync_api",
-    "playwright._impl",
-    "playwright._impl._driver",
-    "playwright._impl._browser_type",
-    "playwright._impl._connection",
-    "playwright._impl._transport",
-    "greenlet",
+    # "playwright",
+    # "playwright.async_api",
+    # "playwright.sync_api",
+    # "playwright._impl",
+    # "playwright._impl._driver",
+    # "playwright._impl._browser_type",
+    # "playwright._impl._connection",
+    # "playwright._impl._transport",
+    # "greenlet",
     # HTTP
-    "httpx",
-    "httpx._transports",
-    "httpcore",
-    "h11",
-    "anyio",
-    "sniffio",
+    # "httpx",
+    # "httpx._transports",
+    # "httpcore",
+    # "h11",
+    # "anyio",
+    # "sniffio",
     # AMF
     # "pyamf",
     # "pyamf",
     # Proxy
-    "pypac",
-    "pypac.resolver",
+    # "pypac",
+    # "pypac.resolver",
     # XML
-    "lxml",
-    "lxml.etree",
+    # "lxml",
+    # "lxml.etree",
     # Credenciales
-    "keyring",
-    "keyring.backends",
-    "keyring.backends.Windows",
+    # "keyring",
+    # "keyring.backends",
+    # "keyring.backends.Windows",
     # Otros
     "certifi",
     "idna",
