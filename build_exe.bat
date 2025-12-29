@@ -1,16 +1,16 @@
 @echo off
 setlocal enabledelayedexpansion
 
-REM Podofilo V2 - Generador de ejecutable
+REM Podofilo V2 Core - Generador de ejecutable
 REM Ejecuta este script desde la raíz del repositorio
 
 set "PROJECT_DIR=%~dp0"
 cd /d "%PROJECT_DIR%"
 
-echo [1/4] Activando entorno conda "podofilo_v2"...
-call conda activate podofilo_v2 >nul 2>&1
+echo [1/4] Activando entorno conda "podofilo_v2_core"...
+call conda activate podofilo_v2_core >nul 2>&1
 if errorlevel 1 (
-    echo No se pudo activar el entorno "podofilo_v2". Asegura haber ejecutado "conda activate podofilo_v2" al menos una vez en esta consola.
+    echo No se pudo activar el entorno "podofilo_v2_core". Asegura haber ejecutado "conda activate podofilo_v2_core" al menos una vez en esta consola.
     exit /b 1
 )
 
