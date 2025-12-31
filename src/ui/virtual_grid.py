@@ -535,6 +535,7 @@ class VirtualGrid(ctk.CTkFrame):
         # Cache de overlays por tamaño para evitar crear nuevos objetos PIL en cada frame
         self._selection_overlay_cache: Dict[Tuple[int, int], ImageTk.PhotoImage] = {}
         self._hover_overlay_cache: Dict[Tuple[int, int], ImageTk.PhotoImage] = {}
+        self._header_bg_cache: Dict[Tuple[int, int, str], ImageTk.PhotoImage] = {}
         
         # UI Setup
         self.grid_columnconfigure(1, weight=1) # Canvas is now col 1
@@ -716,6 +717,8 @@ class VirtualGrid(ctk.CTkFrame):
             self._selection_overlay_cache.clear()
         if hasattr(self, '_hover_overlay_cache'):
             self._hover_overlay_cache.clear()
+        if hasattr(self, '_header_bg_cache'):
+            self._header_bg_cache.clear()
         
         # Marcar que el tamaño cambió para forzar redibujado completo
         self._last_thumbnail_size = size
@@ -1456,8 +1459,21 @@ class VirtualGrid(ctk.CTkFrame):
             )
 
     def _draw_section_headers(self, scroll_y, view_height):
-        """Draw section headers for visible sections in continuous mode"""
+        """Draw section headers with Color Tabs and Glassmorphism effect"""
         header_font = ("Segoe UI", 10, "bold")
+        mode = ctk.get_appearance_mode()
+        
+        # Modern colors for tabs (Idea 2)
+        SECTION_COLORS = [
+            "#007AFF", # Blue (macOS)
+            "#34C759", # Green
+            "#FF9500", # Orange
+            "#FF3B30", # Red
+            "#AF52DE", # Purple
+            "#5856D6", # Indigo
+            "#FF2D55", # Pink
+            "#00C7BE", # Teal
+        ]
         
         for i, section in enumerate(self.sections):
             if i not in self.layout.section_header_coords:
@@ -1474,27 +1490,32 @@ class VirtualGrid(ctk.CTkFrame):
             if not name:
                 continue
             
-            # Create header background and text
-            # We want a small box at the top-left of the first thumbnail
+            # 1. Colors and Theme
+            if mode == "Light":
+                # Semi-transparent white with subtle border
+                bg_glass = (255, 255, 255, 210)  # Glass white
+                border_color = (210, 210, 215, 255) # Light gray border
+                text_color = "#1D1D1F"
+            else:
+                # Semi-transparent dark with subtle border
+                bg_glass = (45, 45, 45, 220)    # Glass dark
+                border_color = (85, 85, 85, 255)  # Darker gray border
+                text_color = "#FFFFFF"
             
-            # 1. Measure text width
-            char_width = 7 # approx for size 10 bold
+            # Tab color based on index
+            tab_color = SECTION_COLORS[i % len(SECTION_COLORS)]
+            
+            # 2. Layout calculation
+            char_width = 7.5 
             text_width = len(name) * char_width
-            padding = 20 # Extra breathing room
+            padding_right = 15
+            padding_left = 14 # Extra space for the vertical tab
             
-            # 2. Constraint: cannot assume full self.width. Must use max_w (section visual width on this line)
-            # Use max_w calculated in layout
-            limit_width = max(50, max_w) # At least 50px
+            limit_width = max(60, max_w)
+            desired_width = text_width + padding_left + padding_right
             
-            # 3. Calculate desired total width
-            desired_width = text_width + padding
-            
-            # 4. Truncate if needed
             if desired_width > limit_width:
-                 # Calculate how many chars fit
-                 # (chars * char_width) + padding = limit_width
-                 # chars = (limit_width - padding) / char_width
-                 chars_fit = int((limit_width - padding) / char_width)
+                 chars_fit = int((limit_width - padding_left - padding_right) / char_width)
                  if chars_fit < 3: chars_fit = 3
                  display_text = name[:chars_fit-2] + "..."
                  final_width = limit_width
@@ -1502,42 +1523,58 @@ class VirtualGrid(ctk.CTkFrame):
                  display_text = name
                  final_width = desired_width
             
-            # Draw header
+            h = 24 # Header height
+            final_width = int(final_width)
+            
+            # --- NEW: Get height of the FIRST PAGE of this section ---
+            start_page_idx = section.start_page
+            full_bar_height = h # Fallback
+            if 0 <= start_page_idx < len(self.layout.positions):
+                 _, _, _, actual_page_h = self.layout.positions[start_page_idx]
+                 full_bar_height = actual_page_h
 
-            # Draw header
-            # Gray background, dark text
-            bg_color = "#E0E0E0" if ctk.get_appearance_mode() == "Light" else "#404040"
-            text_color = "#202020" if ctk.get_appearance_mode() == "Light" else "#E0E0E0"
+            # Offset for the name box to avoid overlapping the vertical bar
+            tab_width = 5
+            gap = 2 # Pixels between bar and box
+            box_x = x + tab_width + gap
+
+            # 3. Create or get Glass Background (Idea 6) - JUST THE BOX
+            cache_key = (final_width, h, mode) 
+            if cache_key not in self._header_bg_cache:
+                # Create glass banner with sharper corners
+                img = Image.new('RGBA', (final_width, h), (0, 0, 0, 0))
+                draw = ImageDraw.Draw(img)
+                radius = 2 # Reduced rounding (was 6)
+                
+                # Main Glass Body
+                draw.rounded_rectangle([0, 0, final_width-1, h-1], radius=radius, fill=bg_glass, outline=border_color, width=1)
+                self._header_bg_cache[cache_key] = ImageTk.PhotoImage(img)
             
-            # Draw rounded rect (using polygon or oval+rect)
-            # Simple rectangle for now
-            h = 24 # Slightly taller
+            # 4. Draw to Canvas
             
-            # Background
-            # Position: Aligned with top of thumbnail (y)
-            rect_id = self.canvas.create_rectangle(
-                x, y, 
-                x + final_width, y + h,
-                fill=bg_color,
-                outline="",
-                tags="section_header"
+            # --- A. Draw the FULL HEIGHT Color Bar (Idea 2 Improved) ---
+            bar_id = self.canvas.create_rectangle(
+                x, y, x + tab_width, y + full_bar_height,
+                fill=tab_color, outline="", tags="section_header"
             )
-            
-            # Store hit info
-            self._header_hit_zones[(x, y, x + final_width, y + h)] = section
-            self._header_items[rect_id] = section
+            self._header_items[bar_id] = section
 
-            # Text
+            # --- B. Draw the Glass Banner slightly shifted ---
+            bg_id = self.canvas.create_image(box_x, y, image=self._header_bg_cache[cache_key], anchor="nw", tags="section_header")
+            
+            # Store hit info for renaming/menus (using shifted coordinates)
+            self._header_hit_zones[(box_x, y, box_x + final_width, y + h)] = section
+            self._header_items[bg_id] = section
+
+            # Text (centered vertically in header, shifted with the box)
             text_id = self.canvas.create_text(
-                x + 5, y + h/2,
+                box_x + 8, y + h/2, # Padding from new box edge
                 text=display_text,
                 font=header_font,
                 fill=text_color,
                 anchor="w",
                 tags="section_header"
             )
-            self._header_items[text_id] = section
-            
             self._header_items[text_id] = section
             
             # (Tag bindings removed in favor of manual check in _on_right_click for reliability)

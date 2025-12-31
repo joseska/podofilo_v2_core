@@ -397,7 +397,7 @@ class PageEditorWindow(ctk.CTkFrame):
         # Section operations
         self.context_menu.add_separator()
         self.context_menu.add_command(
-            label="✂️ Dividir Sección Aquí (K)",
+            label="✂️ Dividir Sección Aquí (Ctrl+K)",
             command=self._on_split_section
         )
         

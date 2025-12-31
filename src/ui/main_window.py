@@ -487,9 +487,7 @@ class PodofiloApp:
         self.grid.on_selection_change = self._on_selection_change
         self.grid.on_right_click = self._on_right_click
         self.grid.on_click = self._on_thumbnail_click
-        # The on_double_click is now passed in the constructor, so this line might be redundant or needs to be removed if the constructor takes precedence.
-        # For now, keeping it as the user's snippet didn't explicitly remove it, but it's usually set once.
-        # self.grid.on_double_click = self._on_thumbnail_double_click 
+        self.grid.on_double_click = self._on_thumbnail_double_click
         self.grid.on_drag_start = self._on_drag_start
         self.grid.on_drag_motion = self._on_drag_motion
         self.grid.on_drag_end = self._on_drag_end
@@ -645,6 +643,8 @@ class PodofiloApp:
         self.root.bind("<Control-0>", self.zoom_reset)
         self.root.bind("k", self.toggle_cut_mode)
         self.root.bind("<K>", self.toggle_cut_mode)
+        self.root.bind("<Control-k>", self._handle_split_shortcut)
+        self.root.bind("<Control-K>", self._handle_split_shortcut)
         self.root.bind("<Escape>", self.deactivate_cut_mode)
         self.root.bind_all("<Shift-S>", self.show_save_dialog)
         self.root.bind("<Control-a>", lambda e: self.open_pdf())
@@ -2174,6 +2174,7 @@ class PodofiloApp:
             "format": get_menu_icon("format"),
             "position": get_menu_icon("position"),
             "split": get_menu_icon("split"),
+            "cut": get_menu_icon("cut"),
             # Dimmed versions for disabled items
             "merge_dim": get_menu_icon("merge", dimmed=True),
             "select_all_dim": get_menu_icon("select_all", dimmed=True),
@@ -2327,7 +2328,9 @@ class PodofiloApp:
         has_marked = len(self.viewer.marked_pages) > 0
         has_undo = bool(self.undo_stack)
         has_redo = bool(self.redo_stack)
-        can_split = index != -1 and has_pages
+        # Split only allowed if exactly one page is selected and we clicked on an item
+        single_selection = len(self.grid.selected_indices) == 1
+        can_split = index != -1 and has_pages and single_selection
         
         # Collapse to boxes option (only if can collapse)
         if self._can_collapse_to_boxes:
@@ -2378,35 +2381,7 @@ class PodofiloApp:
             image=icons["redo"] if has_redo else icons["redo_dim"],
             compound="left"
         )
-        
-        menu.add_separator()
-        
-        # Page operations (require selection or pages)
-        menu.add_command(
-            label="Duplicar páginas",
-            accelerator="(D)",
-            command=self.duplicate_selected,
-            state="normal" if has_selection else "disabled",
-            image=icons["duplicate"] if has_selection else icons["duplicate_dim"],
-            compound="left"
-        )
-        menu.add_command(
-            label="Añadir páginas en blanco",
-            accelerator="(Mayúsculas + D)",
-            command=self.insert_blank_pages,
-            state="normal" if has_pages else "disabled",
-            image=icons["blank"] if has_pages else icons["blank_dim"],
-            compound="left"
-        )
-        menu.add_command(
-            label="Eliminar páginas",
-            accelerator="(Supr)",
-            command=self.delete_selected,
-            state="normal" if has_selection else "disabled",
-            image=icons["delete"] if has_selection else icons["delete_dim"],
-            compound="left"
-        )
-        
+
         menu.add_separator()
         
         # Page editor
@@ -2419,10 +2394,37 @@ class PodofiloApp:
             compound="left"
         )
         
-        menu.add_separator()
+        # Page operations - Submenu
+        page_ops_menu = Menu(menu, tearoff=0)
         
-        # Rotation
-        menu.add_command(
+        page_ops_menu.add_command(
+            label="Duplicar páginas",
+            accelerator="(D)",
+            command=self.duplicate_selected,
+            state="normal" if has_selection else "disabled",
+            image=icons["duplicate"] if has_selection else icons["duplicate_dim"],
+            compound="left"
+        )
+        page_ops_menu.add_command(
+            label="Añadir páginas en blanco",
+            accelerator="(Mayúsculas + D)",
+            command=self.insert_blank_pages,
+            state="normal" if has_pages else "disabled",
+            image=icons["blank"] if has_pages else icons["blank_dim"],
+            compound="left"
+        )
+        page_ops_menu.add_command(
+            label="Eliminar páginas",
+            accelerator="(Supr)",
+            command=self.delete_selected,
+            state="normal" if has_selection else "disabled",
+            image=icons["delete"] if has_selection else icons["delete_dim"],
+            compound="left"
+        )
+        
+        page_ops_menu.add_separator()
+        
+        page_ops_menu.add_command(
             label="Girar páginas hacia la derecha",
             accelerator="(Ctrl + R)",
             command=self.rotate_selected,
@@ -2431,10 +2433,9 @@ class PodofiloApp:
             compound="left"
         )
         
-        menu.add_separator()
+        page_ops_menu.add_separator()
         
-        # Blank page marking
-        menu.add_command(
+        page_ops_menu.add_command(
             label="Marcar páginas en blanco",
             accelerator="(B)",
             command=self.mark_selected_blank,
@@ -2442,7 +2443,7 @@ class PodofiloApp:
             image=icons["mark"] if has_selection else icons["mark_dim"],
             compound="left"
         )
-        menu.add_command(
+        page_ops_menu.add_command(
             label="Desmarcar páginas",
             accelerator="(Mayúsculas + B)",
             command=self.unmark_selected,
@@ -2450,7 +2451,7 @@ class PodofiloApp:
             image=icons["unmark"] if has_selection else icons["unmark_dim"],
             compound="left"
         )
-        menu.add_command(
+        page_ops_menu.add_command(
             label="Borrar páginas marcadas",
             accelerator="(X)",
             command=self.delete_marked,
@@ -2458,6 +2459,8 @@ class PodofiloApp:
             image=icons["delete"] if has_marked else icons["delete_dim"],
             compound="left"
         )
+        
+        menu.add_cascade(label="Páginas Seleccionadas", menu=page_ops_menu)
         
         menu.add_separator()
         
@@ -2497,7 +2500,15 @@ class PodofiloApp:
         
         # Section operations (only if clicking on a valid page)
         menu.add_command(
+            label="Activar/Desactivar Modo Corte",
+            accelerator="(K)",
+            command=self.toggle_cut_mode,
+            image=icons["cut"],
+            compound="left"
+        )
+        menu.add_command(
             label="Dividir Sección Aquí",
+            accelerator="(Ctrl + K)",
             command=lambda: self.split_section(index),
             state="normal" if can_split else "disabled",
             image=icons["split"] if can_split else icons["split_dim"],
@@ -2505,6 +2516,25 @@ class PodofiloApp:
         )
         
         
+        menu.add_separator()
+        
+        # Zoom operations
+        menu.add_command(
+            label="Aumentar Zoom",
+            accelerator="(Ctrl + +)",
+            command=self.zoom_in
+        )
+        menu.add_command(
+            label="Reducir Zoom",
+            accelerator="(Ctrl + -)",
+            command=self.zoom_out
+        )
+        menu.add_command(
+            label="Zoom 100%",
+            accelerator="(Ctrl + 0)",
+            command=self.zoom_reset
+        )
+
         if self.extensions:
             menu.add_separator()
             menu.add_command(
@@ -2521,6 +2551,14 @@ class PodofiloApp:
                 image=icons["download"],
                 compound="left"
             )
+
+        menu.add_separator()
+        
+        menu.add_command(
+            label="Limpiar todo (Reiniciar aplicación)",
+            accelerator="(Ctrl + N)",
+            command=self.clear_all
+        )
         
         menu.add_separator()
         
@@ -2538,6 +2576,7 @@ class PodofiloApp:
 
     def split_section(self, index: int):
         """Split section at index"""
+        self.add_undo_snapshot()
         # Removed box_mode check to allow backend split
         
         # Ensure backend is ready if we are in box mode
@@ -2562,6 +2601,22 @@ class PodofiloApp:
             self.grid.set_sections(self.section_manager.sections)
         
         log.info(f"Sección '{section_name}' dividida en página {index}")
+
+    def _handle_split_shortcut(self, event=None):
+        """Handle Ctrl+K shortcut - splits section at current selection or editor page"""
+        # If editor is active, split at editor's current page
+        if self.editor_active and self.current_editor:
+            self._split_section_from_editor(self.current_editor.page_index)
+            return
+
+        # Not in editor: split at selection
+        if len(self.grid.selected_indices) != 1:
+            self.update_status("Selecciona exactamente UNA página para dividir la sección")
+            return
+            
+        selected_index = list(self.grid.selected_indices)[0]
+        # Split at the selected index
+        self.split_section(selected_index)
     
     def _split_section_from_editor(self, index: int):
         """Split section at index from page editor - updates grid after split"""
