@@ -885,6 +885,11 @@ class PodofiloApp:
         """Maneja CTRL+S para subir documentos a OVE (con auto-conexión)"""
         if not self.extensions: return "break"
         
+        # Verificar si hay documentos/páginas cargadas
+        has_items = (len(self.grid.document_boxes) > 0) if self.grid.box_mode else (self.viewer.get_page_count() > 0)
+        if not has_items:
+            return "break"
+        
         # 1. Verificar conexión
         state = getattr(self, "ove_connection_state", "idle")
         
@@ -2191,6 +2196,8 @@ class PodofiloApp:
             "format_dim": get_menu_icon("format", dimmed=True),
             "position_dim": get_menu_icon("position", dimmed=True),
             "split_dim": get_menu_icon("split", dimmed=True),
+            "upload_dim": get_menu_icon("upload", dimmed=True),
+            "cut_dim": get_menu_icon("cut", dimmed=True),
         }
         # Keep references to prevent garbage collection
         self._menu_icons = icons
@@ -2297,7 +2304,8 @@ class PodofiloApp:
                     label="Subir Expediente al OVE",
                     accelerator="(Ctrl + S)",
                     command=self._handle_ove_upload_shortcut,
-                    image=icons["upload"],
+                    state="normal" if has_boxes else "disabled",
+                    image=icons["upload"] if has_boxes else icons["upload_dim"],
                     compound="left"
                 )
                 
@@ -2503,7 +2511,8 @@ class PodofiloApp:
             label="Activar/Desactivar Modo Corte",
             accelerator="(K)",
             command=self.toggle_cut_mode,
-            image=icons["cut"],
+            state="normal" if has_pages else "disabled",
+            image=icons["cut"] if has_pages else icons["cut_dim"],
             compound="left"
         )
         menu.add_command(
@@ -2538,14 +2547,15 @@ class PodofiloApp:
         if self.extensions:
             menu.add_separator()
             menu.add_command(
-                label="Subir al Expediente OVE",
+                label="Subir el Expediente al OVE",
                 accelerator="(Ctrl + S)",
                 command=self._handle_ove_upload_shortcut,
-                image=icons["upload"],
+                state="normal" if has_pages else "disabled",
+                image=icons["upload"] if has_pages else icons["upload_dim"],
                 compound="left"
             )
             menu.add_command(
-                label="Descargar Expediente OVE",
+                label="Descargar Expediente del OVE",
                 accelerator="(Ctrl + O)",
                 command=self._trigger_ove_download,
                 image=icons["download"],
@@ -2804,6 +2814,9 @@ class PodofiloApp:
 
         if self.editor_active:
              return
+
+        if self.viewer.get_page_count() == 0:
+            return
 
         self.cut_mode = not self.cut_mode
         self.grid.cut_mode = self.cut_mode

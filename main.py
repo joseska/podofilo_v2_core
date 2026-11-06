@@ -6,7 +6,7 @@ import argparse
 import logging
 from pathlib import Path
 
-APP_VERSION_LABEL = "V2_25_12_2025"
+APP_VERSION_LABEL = "V2_14_01_2026"
 
 # Setup logging
 logging.basicConfig(

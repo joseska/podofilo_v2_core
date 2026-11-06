@@ -1,7 +1,7 @@
 # Podofilo V2 - Gestor de PDFs para Extranjería (Open Core)
 
 ## Descripción
-Podofilo V2 es una modernización completa de la aplicación original (Aplicacion Interna de Extranjería en Tenerife desarrollada por **Jaime Velasco Juan bajo licencia GNU** - General Public License v3.0), reconstruida con Python 3.12+ (compatible con 3.14) y librerías modernas. Diseñada como una herramienta de "núcleo abierto" (Open Core), permite la gestión avanzada de documentación de expedientes de extranjería, con capacidad de extenderse mediante plugins para integraciones específicas (como el sistema OVE).
+Podofilo V2 es una modernización completa de la aplicación original, reconstruida con Python 3.12+ (compatible con 3.14) y librerías modernas. Diseñada como una herramienta de "núcleo abierto" (Open Core), permite la gestión avanzada de documentación de expedientes de extranjería, con capacidad de extenderse mediante plugins para integraciones específicas (como el sistema OVE).
 
 ![Podofilo V2](resources/image1.png)
 
@@ -56,13 +56,22 @@ podofilo_v2/
 ```
 
 ## Notas de Versión Recientes
+### V2 (14 de Enero 2026)
+- **Mejoras de UX en Menús**: Deshabilitación dinámica de las opciones "Subir al OVE" y "Modo Corte" en el menú contextual y atajos de teclado cuando no hay documentos cargados, mejorando la coherencia de la interfaz.
+- **Actualización de Versión**: Sincronización de etiquetas internas para reflejar la versión estable actual.
+
+### V2.UI/UX & Fixes (Enero 2026)
+- **Mejora Visual de Secciones**: Implementación de encabezados con efecto de cristal (glassmorphism) e identificadores laterales cromatizados para facilitar la distinción entre documentos.
+- **Corrección de Estado (Undo)**: Se ha corregido el comportamiento del sistema de deshacer (`Ctrl+Z`) para evitar cambios de vista accidentales tras operaciones de corte o división.
+- **Refactorización Core**: Limpieza de dependencias y optimización del cargador de extensiones para un arranque más limpio en entornos sin el plugin OVE.
+
 ### V2.OpenCore (Diciembre 2025)
-- **Separación de Código**: Aislamiento total del código OVE en extensión.
-- **Carga Dinámica**: La UI se adapta a la presencia/ausencia de extensiones.
+- **Separación de Código**: Aislamiento total del código OVE en su propia extensión.
+- **Carga Dinámica**: Adaptación automática de la interfaz según los componentes disponibles.
 
 ### V2.Optimización (Diciembre 2025)
-- **Rendimiento**: Zoom instantáneo, startup ultrarrápido (<3s).
-- **Estabilidad**: Solución a problemas de enfoque y visualización.
+- **Rendimiento**: Implementación de zoom instantáneo y reducción del tiempo de inicio a menos de 3 segundos.
+- **Estabilidad**: Corrección de fallos de enfoque y parpadeos en el grid virtualizado.
 
 ## Licencia
 Este proyecto está licenciado bajo la **GNU General Public License v3.0**.
