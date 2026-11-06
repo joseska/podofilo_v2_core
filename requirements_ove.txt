@@ -1,0 +1,29 @@
+# Podofilo V2 - Dependencias de la extension OVE (PRIVADA)
+#
+# Estas dependencias SOLO se necesitan si copies manualmente la extension
+# src/extensions/ove/ a este repo (no viene con la version publica).
+#
+# Instalacion:
+#   pip install -r requirements_ove.txt
+#   xcopy /E /I "\\ruta\a\podofilo_dev\src\extensions\ove" src\extensions\ove
+#
+# Ver docs/SYNC.md para la politica de sincronizacion dev -> core.
+
+# Browser automation (Servicio OVEUnificadoService, hilo worker Playwright)
+playwright>=1.40.0
+greenlet>=3.0.0          # dependencia de Playwright
+
+# HTTP (endpoints OVE/VIMOD/ACEX/copias autenticas)
+httpx>=0.27.0
+
+# Proxy PAC (redsara)
+pypac>=0.16.0
+
+# HTML parsing (parse_acex_result, tipos de firma)
+lxml>=5.0.0
+
+# Secure credential storage (Windows Credential Manager, servicio OVE_Podofilo)
+keyring>=25.0.0
+
+# Residuo legacy deshabilitado (protocolo ACEX antiguo); no es necesario.
+# Py3AMF>=0.8.5

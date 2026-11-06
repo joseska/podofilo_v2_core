@@ -1,4 +1,15 @@
 # -*- mode: python ; coding: utf-8 -*-
+# PodofiloV2 (CORE PUBLICO - open core, sin extension OVE).
+#
+# Diferencias respecto al spec de podofilo_dev (build con extension OVE):
+#   - Sin hiddenimports de la extension: playwright, greenlet, pypac, lxml,
+#     keyring (y sin los imports src.extensions.ove.*).
+#   - Sin el datas del driver de Playwright (solo necesario para la extension).
+#   - VERSION.txt si se empaqueta: main._read_version_label() lo lee del
+#     bundle (el updater del core funciona igual que en dev).
+#   - httpx SI se activa en hiddenimports: lo necesita src/core/updater.py.
+#
+# Ver docs/SYNC.md para la politica de sincronizacion dev -> core.
 
 from pathlib import Path
 import os
@@ -6,17 +17,6 @@ import os
 BASE_DIR = Path.cwd()
 SRC_DIR = BASE_DIR / "src"
 
-# Obtener ruta del driver de Playwright
-# # Obtener ruta del driver de Playwright
-# def get_playwright_driver_path():
-#     try:
-#         import playwright
-#         pw_path = Path(playwright.__file__).parent / "driver"
-#         if pw_path.exists():
-#             return str(pw_path)
-#     except:
-#         pass
-#     return None
 
 def _collect_datas():
     datas = []
@@ -29,12 +29,10 @@ def _collect_datas():
     # Recursos distribuidos con la app
     add_path("resources", "resources")
 
-    
-    # # Driver de Playwright (CRITICO para que funcione)
-    # pw_driver = get_playwright_driver_path()
-    # if pw_driver:
-    #     datas.append((pw_driver, "playwright/driver"))
-    
+    # VERSION.txt: fuente unica de la version. Se empaqueta en la raiz del
+    # bundle para que main._read_version_label() lo encuentre bajo _MEIPASS.
+    add_path("VERSION.txt", ".")
+
     return datas
 
 
@@ -45,23 +43,13 @@ hidden_imports = [
     # UI
     "tkinterdnd2",
     "PIL._tkinter_finder",
-    # Playwright y async
-    # "playwright",
-    # "playwright.async_api",
-    # "playwright.sync_api",
-    # "playwright._impl",
-    # "playwright._impl._driver",
-    # "playwright._impl._browser_type",
-    # "playwright._impl._connection",
-    # "playwright._impl._transport",
-    # "greenlet",
-    # HTTP
-    # "httpx",
-    # "httpx._transports",
-    # "httpcore",
-    # "h11",
-    # "anyio",
-    # "sniffio",
+    # HTTP (updater del core)
+    "httpx",
+    "httpx._transports",
+    "httpcore",
+    "h11",
+    "anyio",
+    "sniffio",
     # AMF
     # "pyamf",
     # "pyamf",

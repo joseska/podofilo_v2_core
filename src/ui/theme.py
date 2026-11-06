@@ -478,6 +478,7 @@ FLUENT_ICONS = {
     "split": "\uE8A4",        # Split / OpenPane
     "format": "\uE8D2",       # Font / Format
     "position": "\uE81E",     # MapPin / Position
+    "index": "\uE80A",        # List / Index
 }
 
 # Cache for rendered icons

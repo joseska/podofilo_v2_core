@@ -24,6 +24,7 @@ def load_ove_extension() -> Optional[Dict[str, Any]]:
         import src.extensions.ove.service as service_module
         from src.extensions.ove.manager import ShipmentManager
         from src.extensions.ove.ui.upload_dialog import OVEUploadDialog
+        from src.extensions.ove.ui.download_dialog import OVEDownloadAdvancedDialog
         from src.extensions.ove.ui.shipment_window import ShipmentWindow
         from src.extensions.ove.ui.credentials_dialog import OveCredentialsDialog
         
@@ -32,6 +33,7 @@ def load_ove_extension() -> Optional[Dict[str, Any]]:
             "ServiceModule": service_module,
             "Manager": ShipmentManager,
             "UploadDialog": OVEUploadDialog,
+            "DownloadAdvancedDialog": OVEDownloadAdvancedDialog,
             "ShipmentWindow": ShipmentWindow,
             "CredentialsDialog": OveCredentialsDialog
         }

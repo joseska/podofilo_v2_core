@@ -4,7 +4,7 @@ Settings Dialog - Ventana de configuración de la aplicación
 import customtkinter as ctk
 import tkinter as tk
 from tkinter import messagebox
-from typing import List, Callable
+from typing import List, Callable, Dict
 from pathlib import Path
 import json
 
@@ -13,12 +13,26 @@ from src.ui.theme import get_theme, get_button_style
 class SettingsDialog(ctk.CTkToplevel):
     """Dialog for application settings"""
     
-    def __init__(self, parent, config_manager, on_save: Callable = None, ove_enabled: bool = True):
+    def __init__(
+        self,
+        parent,
+        config_manager,
+        on_save: Callable = None,
+        ove_enabled: bool = True,
+        show_advanced: bool = False,
+        version_label: str = "",
+        on_check_updates: Callable = None,
+    ):
         super().__init__(parent)
         
         self.config_manager = config_manager
         self.on_save = on_save
         self.ove_enabled = ove_enabled
+        # Controla si mostramos la pestaña "Avanzado" (y, por tanto, opciones de depuración).
+        self.show_advanced = show_advanced
+        # Para el bloque de "Actualizaciones" en la pestaña General.
+        self.version_label = (version_label or "").strip()
+        self.on_check_updates = on_check_updates
         
         self.title("Configuración de Podofilo")
         self.geometry("800x680")
@@ -29,6 +43,8 @@ class SettingsDialog(ctk.CTkToplevel):
         
         self._setup_ui()
         self.center_window()
+
+        self.bind("<Escape>", lambda e: self.destroy())
         
     def center_window(self):
         self.update_idletasks()
@@ -65,14 +81,19 @@ class SettingsDialog(ctk.CTkToplevel):
         
         # Create tabs
         self.tab_general = self.tabview.add("General")
-        self.tab_watcher = self.tabview.add("Vigilancia")
+        self.tab_watcher = self.tabview.add("Asignaciones")
         self.tab_sections = self.tabview.add("Nombres de Secciones")
-        self.tab_advanced = self.tabview.add("Avanzado")
+        # La pestaña "Avanzado" se muestra solo si la app se ha lanzado en modo debug.
+        if self.show_advanced:
+            self.tab_advanced = self.tabview.add("Avanzado")
+        else:
+            self.tab_advanced = None
         
         self._setup_general_tab()
         self._setup_watcher_tab()
         self._setup_sections_tab()
-        self._setup_advanced_tab()
+        if self.tab_advanced is not None:
+            self._setup_advanced_tab()
         
         # Bottom buttons
         btn_frame = ctk.CTkFrame(self, fg_color="transparent")
@@ -96,28 +117,16 @@ class SettingsDialog(ctk.CTkToplevel):
         
     def _setup_general_tab(self):
         """Setup General settings tab"""
-        # Nombre predeterminado
-        frame = ctk.CTkFrame(self.tab_general, fg_color="transparent")
-        frame.pack(fill="x", padx=20, pady=20)
+        # Crear scrollable frame para todo el contenido
+        scrollable = ctk.CTkScrollableFrame(self.tab_general, fg_color="transparent")
+        scrollable.pack(fill="both", expand=True, padx=5, pady=5)
         
-        ctk.CTkLabel(
-            frame,
-            text="Nombre predeterminado para nuevas secciones:",
-            font=("Segoe UI", 12, "bold")
-        ).pack(anchor="w", pady=(0, 10))
-        
-        self.default_name_entry = ctk.CTkEntry(
-            frame,
-            font=("Segoe UI", 11),
-            corner_radius=1,
-            placeholder_text="Ej: resultado"
-        )
-        self.default_name_entry.pack(fill="x", pady=5)
-        self.default_name_entry.insert(0, self.config_manager.get_default_base_name())
-        
+        # Nombre predeterminado para secciones: se mantiene como configuración interna (fallback "resultado")
+        # pero se elimina del diálogo de opciones para simplificar la UI.
+
         # Split defaults
-        split_frame = ctk.CTkFrame(self.tab_general, fg_color="transparent")
-        split_frame.pack(fill="x", padx=20, pady=20)
+        split_frame = ctk.CTkFrame(scrollable, fg_color="transparent")
+        split_frame.pack(fill="x", padx=15, pady=20)
         
         ctk.CTkLabel(
             split_frame,
@@ -163,10 +172,32 @@ class SettingsDialog(ctk.CTkToplevel):
         self.split_size_entry.pack(side="left")
         self.split_size_entry.insert(0, str(self.config_manager.get_last_split_size_mb()))
 
+        # Opciones de guardado
+        save_frame = ctk.CTkFrame(scrollable, fg_color="transparent")
+        save_frame.pack(fill="x", padx=15, pady=20)
+
+        ctk.CTkLabel(
+            save_frame,
+            text="Opciones de guardado:",
+            font=("Segoe UI", 12, "bold")
+        ).pack(anchor="w", pady=(0, 10))
+
+        self.remove_signatures_on_save_var = ctk.BooleanVar(
+            value=self.config_manager.get_remove_signatures_on_save()
+        )
+        ctk.CTkCheckBox(
+            save_frame,
+            text="Eliminar firmas digitales",
+            variable=self.remove_signatures_on_save_var,
+            font=("Segoe UI", 11),
+            border_width=2,
+            corner_radius=1
+        ).pack(anchor="w")
+
         # OVE Settings
         if self.ove_enabled:
-            ove_frame = ctk.CTkFrame(self.tab_general, fg_color="transparent")
-            ove_frame.pack(fill="x", padx=20, pady=20)
+            ove_frame = ctk.CTkFrame(scrollable, fg_color="transparent")
+            ove_frame.pack(fill="x", padx=15, pady=20)
 
             ctk.CTkLabel(
                 ove_frame,
@@ -174,29 +205,31 @@ class SettingsDialog(ctk.CTkToplevel):
                 font=("Segoe UI", 12, "bold")
             ).pack(anchor="w", pady=(0, 10))
 
-            self.ove_show_browser_var = ctk.BooleanVar(value=self.config_manager.get_ove_show_browser())
-            ctk.CTkCheckBox(
-                ove_frame,
-                text="Modo Debug: Mostrar navegador OVE (no oculto)",
-                variable=self.ove_show_browser_var,
-                font=("Segoe UI", 11),
-                border_width=2,
-                corner_radius=1
-            ).pack(anchor="w", pady=5)
-
             self.ove_auto_connect_var = ctk.BooleanVar(value=self.config_manager.get_ove_auto_connect())
             ctk.CTkCheckBox(
                 ove_frame,
-                text="NO conectar automáticamente al OVE (retraso de 1s)",
+                text="NO conectar automáticamente al OVE",
                 variable=self.ove_auto_connect_var,
                 font=("Segoe UI", 11),
                 border_width=2,
                 corner_radius=1
             ).pack(anchor="w")
 
+            self.ove_no_descargar_copias_autenticas_var = ctk.BooleanVar(
+                value=self.config_manager.get_ove_no_descargar_copias_autenticas()
+            )
+            ctk.CTkCheckBox(
+                ove_frame,
+                text="NO Descargar Copias Auténticas (usar versión normal)",
+                variable=self.ove_no_descargar_copias_autenticas_var,
+                font=("Segoe UI", 11),
+                border_width=2,
+                corner_radius=1
+            ).pack(anchor="w", pady=(5, 0))
+
         # Appearance Settings
-        appearance_frame = ctk.CTkFrame(self.tab_general, fg_color="transparent")
-        appearance_frame.pack(fill="x", padx=20, pady=20)
+        appearance_frame = ctk.CTkFrame(scrollable, fg_color="transparent")
+        appearance_frame.pack(fill="x", padx=15, pady=20)
 
         ctk.CTkLabel(
             appearance_frame,
@@ -242,12 +275,64 @@ class SettingsDialog(ctk.CTkToplevel):
             text_color="gray"
         )
         self.appearance_note.pack(anchor="w", pady=(5, 0))
+
+        # --- Actualizaciones ---
+        updates_frame = ctk.CTkFrame(scrollable, fg_color="transparent")
+        updates_frame.pack(fill="x", padx=15, pady=20)
+
+        ctk.CTkLabel(
+            updates_frame,
+            text="Actualizaciones:",
+            font=("Segoe UI", 12, "bold")
+        ).pack(anchor="w", pady=(0, 10))
+
+        update_row = ctk.CTkFrame(updates_frame, fg_color="transparent")
+        update_row.pack(fill="x", pady=5)
+
+        if self.version_label:
+            ctk.CTkLabel(
+                update_row,
+                text=f"Versión instalada: {self.version_label}",
+                font=("Segoe UI", 11)
+            ).pack(side="left", padx=(0, 10))
+
+        ctk.CTkButton(
+            update_row,
+            text="Comprobar actualizaciones",
+            command=self._on_check_updates,
+            width=180,
+            **get_button_style("secondary")
+        ).pack(side="left")
+
+    def _on_check_updates(self):
+        """Lanza la comprobación manual de actualizaciones."""
+        if self.on_check_updates is None:
+            from tkinter import messagebox
+            messagebox.showinfo(
+                "Actualizaciones",
+                "La comprobación de actualizaciones no está disponible.",
+                parent=self,
+            )
+            return
+        try:
+            self.on_check_updates()
+        except Exception as exc:
+            from tkinter import messagebox
+            messagebox.showerror(
+                "Actualizaciones",
+                f"No se pudo iniciar la comprobación:\n{exc!r}",
+                parent=self,
+            )
         
     def _setup_watcher_tab(self):
         """Setup Watcher settings tab"""
+        # Crear scrollable frame para todo el contenido
+        scrollable = ctk.CTkScrollableFrame(self.tab_watcher, fg_color="transparent")
+        scrollable.pack(fill="both", expand=True, padx=5, pady=5)
+        
         # Description
-        desc_frame = ctk.CTkFrame(self.tab_watcher, fg_color="transparent")
-        desc_frame.pack(fill="x", padx=20, pady=20)
+        desc_frame = ctk.CTkFrame(scrollable, fg_color="transparent")
+        desc_frame.pack(fill="x", padx=15, pady=20)
         
         ctk.CTkLabel(
             desc_frame,
@@ -262,15 +347,13 @@ class SettingsDialog(ctk.CTkToplevel):
             text_color="gray"
         ).pack(anchor="w")
 
-        # Auto-delete Checkbox
-        self.watch_auto_delete_var = ctk.BooleanVar(value=self.config_manager.get_watch_auto_delete())
-        ctk.CTkCheckBox(
+        # Nota visible en la UI para dejar claro el comportamiento fijo.
+        # Esto evita confusión al no existir ya la opción de activar/desactivar el borrado.
+        ctk.CTkLabel(
             desc_frame,
-            text="Borrar archivos automáticamente tras importarlos (Recomendado para impresoras virtuales)",
-            variable=self.watch_auto_delete_var,
+            text="Los archivos importados desde carpetas vigiladas se borran siempre tras importarse.",
             font=("Segoe UI", 11),
-            border_width=2,
-            corner_radius=1
+            text_color="gray"
         ).pack(anchor="w", pady=(10, 0))
 
         # Optimize Import Checkbox
@@ -285,8 +368,8 @@ class SettingsDialog(ctk.CTkToplevel):
         ).pack(anchor="w", pady=(5, 0))
 
         # Buttons Toolbar
-        toolbar = ctk.CTkFrame(self.tab_watcher, fg_color="transparent")
-        toolbar.pack(fill="x", padx=20, pady=(0, 5))
+        toolbar = ctk.CTkFrame(scrollable, fg_color="transparent")
+        toolbar.pack(fill="x", padx=15, pady=(0, 5))
 
         ctk.CTkButton(
             toolbar,
@@ -305,8 +388,8 @@ class SettingsDialog(ctk.CTkToplevel):
         ).pack(side="left", padx=2)
 
         # Folder List
-        list_frame = ctk.CTkFrame(self.tab_watcher)
-        list_frame.pack(fill="both", expand=True, padx=20, pady=5)
+        list_frame = ctk.CTkFrame(scrollable)
+        list_frame.pack(fill="x", expand=False, padx=15, pady=5)
 
         scrollbar = tk.Scrollbar(list_frame)
         scrollbar.pack(side="right", fill="y")
@@ -315,18 +398,114 @@ class SettingsDialog(ctk.CTkToplevel):
             list_frame,
             selectmode=tk.SINGLE,
             font=("Segoe UI", 11),
+            height=4,
             bd=0,
             highlightthickness=0,
             activestyle="none",
             yscrollcommand=scrollbar.set
         )
-        self.folders_listbox.pack(side="left", fill="both", expand=True)
+        self.folders_listbox.pack(side="left", fill="x", expand=True)
         scrollbar.config(command=self.folders_listbox.yview)
 
         # Populate list
         self.watched_folders = list(self.config_manager.get_watched_folders())
         for folder in self.watched_folders:
             self.folders_listbox.insert(tk.END, folder)
+
+        # --------------------------
+        # Signature assignments (doc_signature_map)
+        # --------------------------
+
+        assignments_frame = ctk.CTkFrame(scrollable, fg_color="transparent")
+        assignments_frame.pack(fill="x", padx=15, pady=(10, 5))
+
+        ctk.CTkLabel(
+            assignments_frame,
+            text="Asignaciones de firma (recordadas):",
+            font=("Segoe UI", 12, "bold")
+        ).pack(anchor="w", pady=(0, 5))
+
+        ctk.CTkLabel(
+            assignments_frame,
+            text="Aquí puedes borrar asignaciones guardadas de tipo de firma por documento.",
+            font=("Segoe UI", 11),
+            text_color="gray"
+        ).pack(anchor="w")
+
+        assignments_toolbar = ctk.CTkFrame(assignments_frame, fg_color="transparent")
+        assignments_toolbar.pack(fill="x", pady=(10, 5))
+
+        ctk.CTkButton(
+            assignments_toolbar,
+            text="❌ Eliminar asignación",
+            width=160,
+            command=self._remove_signature_assignment,
+            fg_color="#C9302C",
+            hover_color="#A9201C"
+        ).pack(side="left", padx=2)
+
+        sig_list_frame = ctk.CTkFrame(assignments_frame)
+        sig_list_frame.pack(fill="x")
+
+        sig_scrollbar = tk.Scrollbar(sig_list_frame)
+        sig_scrollbar.pack(side="right", fill="y")
+
+        self.signature_map_listbox = tk.Listbox(
+            sig_list_frame,
+            selectmode=tk.SINGLE,
+            font=("Segoe UI", 11),
+            height=6,
+            bd=0,
+            highlightthickness=0,
+            activestyle="none",
+            yscrollcommand=sig_scrollbar.set
+        )
+        self.signature_map_listbox.pack(side="left", fill="x", expand=True)
+        sig_scrollbar.config(command=self.signature_map_listbox.yview)
+
+        self.doc_signature_map: Dict[str, str] = dict(self.config_manager.get_doc_signature_map() or {})
+        self.signature_map_keys: List[str] = []
+        self._refresh_signature_map_listbox()
+
+    def _refresh_signature_map_listbox(self):
+        if not hasattr(self, "signature_map_listbox"):
+            return
+
+        self.signature_map_listbox.delete(0, tk.END)
+        self.signature_map_keys = []
+
+        for doc_name in sorted(self.doc_signature_map.keys(), key=lambda s: str(s).lower()):
+            tipo = self.doc_signature_map.get(doc_name, "")
+            self.signature_map_keys.append(doc_name)
+            self.signature_map_listbox.insert(tk.END, f"{doc_name} -> {tipo}")
+
+    def _remove_signature_assignment(self):
+        if not hasattr(self, "signature_map_listbox"):
+            return
+
+        sel = self.signature_map_listbox.curselection()
+        if not sel:
+            return
+
+        idx = sel[0]
+        if idx < 0 or idx >= len(self.signature_map_keys):
+            return
+
+        key = self.signature_map_keys[idx]
+        tipo = self.doc_signature_map.get(key, "")
+
+        if not messagebox.askyesno(
+            "Eliminar asignación",
+            f"¿Quieres eliminar esta asignación?\n\n{key} -> {tipo}"
+        ):
+            return
+
+        try:
+            self.doc_signature_map.pop(key, None)
+        except Exception:
+            pass
+
+        self._refresh_signature_map_listbox()
             
     def _add_watched_folder(self):
         """Add folder via dialog"""
@@ -346,6 +525,21 @@ class SettingsDialog(ctk.CTkToplevel):
         if not sel:
             return
         idx = sel[0]
+        
+        # Obtener la carpeta seleccionada
+        selected_folder = self.watched_folders[idx]
+        
+        # Carpeta oviscapto protegida (no se puede eliminar)
+        oviscapto_path = str(Path.home() / "AppData" / "Local" / "oviscapto")
+        
+        if selected_folder == oviscapto_path:
+            messagebox.showwarning(
+                "Carpeta protegida",
+                "La carpeta oviscapto es una carpeta protegida y no se puede eliminar.\n\n"
+                "Esta carpeta es necesaria para el funcionamiento de las impresora Enviar a Podofilo."
+            )
+            return
+        
         self.watched_folders.pop(idx)
         self.folders_listbox.delete(idx)        
     def _setup_sections_tab(self):
@@ -430,6 +624,42 @@ class SettingsDialog(ctk.CTkToplevel):
         
     def _setup_advanced_tab(self):
         """Setup Advanced settings tab"""
+        # Opciones avanzadas / depuración: solo están disponibles cuando la pestaña Avanzado está visible.
+        # Esto evita mostrar opciones técnicas en uso normal.
+
+        if self.ove_enabled:
+            debug_frame = ctk.CTkFrame(self.tab_advanced, fg_color="transparent")
+            debug_frame.pack(fill="x", padx=20, pady=(20, 10))
+
+            ctk.CTkLabel(
+                debug_frame,
+                text="Opciones de depuración:",
+                font=("Segoe UI", 12, "bold")
+            ).pack(anchor="w", pady=(0, 10))
+
+            # Mostrar navegador OVE: permite ver el navegador en tiempo real para diagnóstico.
+            self.ove_show_browser_var = ctk.BooleanVar(value=self.config_manager.get_ove_show_browser())
+
+            ctk.CTkCheckBox(
+                debug_frame,
+                text="Modo Debug: Mostrar navegador OVE (no oculto)",
+                variable=self.ove_show_browser_var,
+                font=("Segoe UI", 11),
+                border_width=2,
+                corner_radius=1
+            ).pack(anchor="w")
+
+        # Verify Pagination Checkbox in Advanced Tab
+        self.check_pagination_var = ctk.BooleanVar(value=self.config_manager.get_check_pagination())
+        ctk.CTkCheckBox(
+            self.tab_advanced, 
+            text="Verificar Foliado (Check Pagination)",
+            variable=self.check_pagination_var,
+            font=("Segoe UI", 11),
+            border_width=2,
+            corner_radius=1
+        ).pack(anchor="w", padx=20, pady=(10, 0))
+
         # Config file location
         frame = ctk.CTkFrame(self.tab_advanced, fg_color="transparent")
         frame.pack(fill="x", padx=20, pady=20)
@@ -621,11 +851,6 @@ class SettingsDialog(ctk.CTkToplevel):
         """Save all settings"""
         try:
             # Validate inputs
-            default_name = self.default_name_entry.get().strip()
-            if not default_name:
-                messagebox.showerror("Error", "El nombre predeterminado no puede estar vacío")
-                return
-            
             try:
                 split_pages = int(self.split_pages_entry.get())
                 if split_pages <= 0:
@@ -643,17 +868,31 @@ class SettingsDialog(ctk.CTkToplevel):
                 return
             
             # Save all settings
-            self.config_manager.set_default_base_name(default_name)
             self.config_manager.set_last_split_pages(split_pages)
             self.config_manager.set_last_split_size_mb(split_size)
-            self.config_manager.set_ove_show_browser(self.ove_show_browser_var.get())
-            self.config_manager.set_ove_auto_connect(self.ove_auto_connect_var.get())
+            if hasattr(self, "remove_signatures_on_save_var"):
+                self.config_manager.set_remove_signatures_on_save(self.remove_signatures_on_save_var.get())
+
+            # Opciones OVE: pueden no existir si OVE no está habilitado o si la pestaña Avanzado está oculta.
+            if hasattr(self, "ove_show_browser_var"):
+                self.config_manager.set_ove_show_browser(self.ove_show_browser_var.get())
+            if hasattr(self, "ove_auto_connect_var"):
+                self.config_manager.set_ove_auto_connect(self.ove_auto_connect_var.get())
+            if hasattr(self, "ove_no_descargar_copias_autenticas_var"):
+                self.config_manager.set_ove_no_descargar_copias_autenticas(self.ove_no_descargar_copias_autenticas_var.get())
+            if hasattr(self, "check_pagination_var"):
+                self.config_manager.set_check_pagination(self.check_pagination_var.get())
             self.config_manager.set_section_names(self.section_names)
             
             # Watcher settings
             self.config_manager.set_watched_folders(self.watched_folders)
-            self.config_manager.set_watch_auto_delete(self.watch_auto_delete_var.get())
+            # El auto-borrado ya no es configurable desde ajustes: el watcher siempre borra
+            # los archivos tras importarlos para evitar reimportaciones en reinicios posteriores.
             self.config_manager.set_watch_optimize_import(self.watch_optimize_import_var.get())
+
+            # Signature memory
+            if hasattr(self, "doc_signature_map"):
+                self.config_manager.set_doc_signature_map(self.doc_signature_map)
             
             # Save appearance mode (check for change)
             current_mode = self.config_manager.get_appearance_mode()

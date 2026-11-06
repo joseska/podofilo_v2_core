@@ -1,0 +1,8 @@
+Windows Registry Editor Version 5.00
+
+[HKEY_CURRENT_USER\Software\Classes\.pdf\shell\AbrirConPodofilo]
+@="Abrir con Podofilo"
+"Icon"="C:\\Users\\josem.luis\\Documents\\GitHub\\podofilo_dev\\dist\\PodofiloV2\\podofiloV2.exe"
+
+[HKEY_CURRENT_USER\Software\Classes\.pdf\shell\AbrirConPodofilo\command]
+@="\"C:\\Users\\josem.luis\\Documents\\GitHub\\podofilo_dev\\dist\\PodofiloV2\\podofiloV2.exe\" \"%1\""

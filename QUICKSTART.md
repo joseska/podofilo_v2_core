@@ -11,9 +11,12 @@
 Se recomienda usar **Conda** para gestionar el entorno.
 
 ```powershell
-# Crear entorno (ejemplo con Python 3.14)
-conda create -n podofilo_v2 python=3.14 -y
-conda activate podofilo_v2
+# Opción A: script automático (crea el env 'podofilo_v2_core' segun environment.yml)
+./setup_conda.ps1
+
+# Opción B: manual
+conda create -n podofilo_v2_core python=3.14 -y
+conda activate podofilo_v2_core
 
 # Instalar dependencias
 pip install -r requirements.txt
@@ -24,7 +27,31 @@ pip install -r requirements.txt
 
 ### Modo Open (Público)
 ```powershell
+python main.py            # Interfaz gráfica
+python main.py --version  # Imprime la versión de VERSION.txt (sin abrir ventana)
+python main.py --debug    # Arranque con logging detallado
+```
+
+La app comprueba 1 vez al día si hay una release nueva en
+`github.com/joseska/podofilo_v2_core/releases`; también puedes comprobarlo
+manualmente desde **Configuración → Comprobar actualizaciones**.
+
+### Modo Full (con extensión OVE, privado)
+Si dispones del código de la extensión privada:
+
+```powershell
+pip install -r requirements_ove.txt
+xcopy /E /I "\ruta\a\src\extensions\ove" src\extensions\ove
 python main.py
+```
+
+Sin esos pasos la app funciona igualmente en **Open Core mode**
+(sin botón OVE, sin conexiones externas).
+
+## Pruebas
+```powershell
+conda activate podofilo_v2_core
+python -m unittest discover -s tests -v
 ```
 
 

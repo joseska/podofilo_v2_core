@@ -155,14 +155,34 @@ class SyncedSidebar(tk.Canvas):
             kwargs.pop('width')
             
         colors = get_sidebar_colors()
-        super().__init__(parent, width=40, bg=colors["bg"], highlightthickness=0, bd=0, **kwargs)
+        # Sidebar integrado: sin borde alrededor (para evitar líneas arriba/abajo/izquierda).
+        # La separación con el contenido la dibujamos como una única línea a la derecha.
+        super().__init__(
+            parent,
+            width=40,
+            bg=colors["bg"],
+            highlightthickness=0,
+            bd=0,
+            **kwargs,
+        )
         self.sections: List[Section] = []
         self.section_bounds: dict = {}
         self.on_section_click = None
         self.on_section_right_click = None
+        self.on_section_reorder = None
+        self.on_section_drag_indicator = None
+        
+        # Estado interno para diferenciar click vs drag.
+        # Esto permite arrastrar una sección para reordenarla sin disparar el renombrado.
+        self._pressed_section_idx: int = -1
+        self._press_y: float = 0.0
+        self._dragging: bool = False
+        self._drag_threshold_px: int = 6
         
         # Events
-        self.bind("<Button-1>", self._on_click)
+        self.bind("<ButtonPress-1>", self._on_press)
+        self.bind("<B1-Motion>", self._on_drag_motion)
+        self.bind("<ButtonRelease-1>", self._on_release)
         self.bind("<Button-3>", self._on_right_click)
         
     def update_layout(self, sections: List[Section], section_bounds: dict, total_height: int):
@@ -189,7 +209,8 @@ class SyncedSidebar(tk.Canvas):
             
             # Background
             color = colors[i % 2]
-            self.create_rectangle(0, y1, 40, y2, fill=color, outline=theme["border"])
+            # Sin contorno por item: se ve más "plano" e integrado, el separador del canvas ya delimita
+            self.create_rectangle(0, y1, 40, y2, fill=color, outline="")
             
             # Text (rotated)
             # Only draw if height is sufficient
@@ -216,11 +237,77 @@ class SyncedSidebar(tk.Canvas):
                 font=("Segoe UI", 8),
                 anchor="n"
             )
+
+        # Línea separadora única a la derecha (estilo Windows Fotos)
+        max_y = 0
+        for bounds in self.section_bounds.values():
+            max_y = max(max_y, bounds[1])
+        max_y = max(max_y, self.winfo_height())
+        self.create_line(39, 0, 39, max_y, fill=theme["border"])
+        
+        # Nota: el indicador de drag se dibuja dinámicamente durante el arrastre.
+        # En cada redraw limpiamos todo, así que aquí no hay que gestionar su borrado.
             
-    def _on_click(self, event):
+    def _on_press(self, event):
+        # Guardamos qué sección se pulsó y la coordenada inicial.
+        # Si el usuario mueve el ratón más de un umbral, lo interpretamos como arrastre.
         y = self.canvasy(event.y)
-        section_idx = self._get_section_at(y)
-        if section_idx != -1 and self.on_section_click:
+        self._pressed_section_idx = self._get_section_at(y)
+        self._press_y = y
+        self._dragging = False
+        # Quitar cualquier indicador anterior (por seguridad ante eventos interrumpidos).
+        self.delete("drag_indicator")
+        if self.on_section_drag_indicator:
+            self.on_section_drag_indicator(None)
+    
+    def _on_drag_motion(self, event):
+        if self._pressed_section_idx == -1:
+            return
+        
+        y = self.canvasy(event.y)
+        
+        # Si todavía no estamos en modo drag, comprobamos si supera el umbral.
+        if not self._dragging:
+            if abs(y - self._press_y) < self._drag_threshold_px:
+                return
+            self._dragging = True
+        
+        # Dibujar un indicador visual de dónde se insertaría la sección.
+        insert_index = self._get_insert_index(y)
+        y_line = self._get_insert_y_line(insert_index)
+        self._draw_drag_indicator(y_line)
+        if self.on_section_drag_indicator:
+            self.on_section_drag_indicator(y_line)
+    
+    def _on_release(self, event):
+        if self._pressed_section_idx == -1:
+            return
+        
+        y = self.canvasy(event.y)
+        section_idx = self._pressed_section_idx
+        
+        # Reset del estado de click/drag.
+        self._pressed_section_idx = -1
+        self._press_y = 0.0
+        
+        # Limpiar el indicador, si existe.
+        self.delete("drag_indicator")
+        if self.on_section_drag_indicator:
+            self.on_section_drag_indicator(None)
+        
+        # Si hubo arrastre, pedimos reordenado. Si no, tratamos como click (renombrar).
+        if self._dragging:
+            self._dragging = False
+            if not self.on_section_reorder:
+                return
+            
+            insert_index = self._get_insert_index(y)
+            if 0 <= section_idx < len(self.sections):
+                self.on_section_reorder(self.sections[section_idx], insert_index)
+            return
+        
+        self._dragging = False
+        if section_idx != -1 and self.on_section_click and 0 <= section_idx < len(self.sections):
             self.on_section_click(self.sections[section_idx])
             
     def _on_right_click(self, event):
@@ -234,3 +321,47 @@ class SyncedSidebar(tk.Canvas):
             if bounds[0] <= y <= bounds[1]:
                 return i
         return -1
+
+    def _get_insert_index(self, y: float) -> int:
+        """Calcular en qué posición de la lista se insertaría una sección al soltar en la coordenada y."""
+        idx = self._get_section_at(y)
+        if idx == -1:
+            return len(self.sections)
+        
+        if idx not in self.section_bounds:
+            return len(self.sections)
+        
+        y1, y2 = self.section_bounds[idx]
+        mid = (y1 + y2) / 2
+        # Si sueltas en la mitad superior, insertamos antes; en la inferior, después.
+        return idx if y <= mid else idx + 1
+
+    def _get_insert_y_line(self, insert_index: int) -> float:
+        """Calcular la coordenada Y (en coordenadas del canvas) para dibujar el indicador de inserción."""
+        # Calcular Y del indicador: el inicio de la sección destino o el final del último bloque.
+        if insert_index <= 0:
+            return 0
+        if insert_index >= len(self.sections):
+            y_line = 0
+            for bounds in self.section_bounds.values():
+                y_line = max(y_line, bounds[1])
+            return y_line
+        
+        if insert_index in self.section_bounds:
+            return self.section_bounds[insert_index][0]
+        
+        # Fallback: buscar el bound más cercano.
+        y_line = 0
+        for i, bounds in self.section_bounds.items():
+            if i >= insert_index:
+                y_line = bounds[0]
+                break
+        return y_line
+
+    def _draw_drag_indicator(self, y_line: float):
+        """Dibuja una línea horizontal para previsualizar el punto de inserción durante el drag."""
+        self.delete("drag_indicator")
+        
+        theme = get_sidebar_colors()
+        # Línea visible pero discreta (usa el color de borde del sidebar).
+        self.create_line(2, y_line, 38, y_line, fill=theme["border"], width=2, tags="drag_indicator")

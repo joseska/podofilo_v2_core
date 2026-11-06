@@ -40,6 +40,11 @@ class PageEditorWindow(ctk.CTkFrame):
         self.min_zoom = 0.1
         self.max_zoom = 5.0
         self.zoom_step = 0.1
+
+        # Modo de ajuste inicial:
+        #   "page"  -> la hoja se ve completa (cabe en alto y ancho)
+        #   "width" -> la hoja se expande hasta los laterales (ancho de ventana)
+        self.fit_mode = "page"
         
         # Callbacks for PDF operations
         self.on_add_numbering = None  # Callback to add page numbering to all pages
@@ -174,11 +179,16 @@ class PageEditorWindow(ctk.CTkFrame):
         # Calculate scaling to fit image in canvas
         img_width, img_height = self.original_image.size
         
-        # Calculate base scale to fit in window
+        # Calculate base scale according to fit mode:
+        # - "page": la hoja completa cabe en la ventana (alto y ancho)
+        # - "width": la hoja se expande hasta los laterales (solo importa el ancho)
         margin = 20
         scale_x = (canvas_width - margin) / img_width
         scale_y = (canvas_height - margin) / img_height
-        base_scale = min(scale_x, scale_y)
+        if self.fit_mode == "width":
+            base_scale = scale_x
+        else:
+            base_scale = min(scale_x, scale_y)
         
         # Apply zoom level
         scale = base_scale * self.zoom_level
@@ -346,6 +356,23 @@ class PageEditorWindow(ctk.CTkFrame):
         self.zoom_level = 1.0
         self._display_image()
         log.debug("Zoom reset: 1.0x (fit to window)")
+    
+    def set_fit_mode(self, mode: str):
+        """Set fit mode: 'page' (hoja completa) o 'width' (ancho de ventana)"""
+        if mode not in ("page", "width"):
+            return
+        if self.fit_mode == mode:
+            return
+        self.fit_mode = mode
+        # Al cambiar de modo, reiniciamos el zoom al ajuste base del nuevo modo
+        self.zoom_level = 1.0
+        self._display_image()
+        log.debug(f"Fit mode: {self.fit_mode}")
+    
+    def toggle_fit_mode(self, event=None):
+        """Alterna entre hoja completa ('page') y ancho de ventana ('width')"""
+        self.set_fit_mode("width" if self.fit_mode == "page" else "page")
+        return "break"
     
     def on_mouse_wheel(self, event):
         """Handle mouse wheel zoom with Ctrl"""

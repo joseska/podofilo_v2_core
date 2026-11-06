@@ -7,14 +7,31 @@ import queue
 from src.ui.theme import get_theme, get_button_style, get_input_style
 
 class CenteredInputDialog(ctk.CTkToplevel):
-    def __init__(self, parent, title: str, text: str, initial_value: str = ""):
+    def __init__(
+        self,
+        parent,
+        title: str,
+        text: str,
+        initial_value: str = "",
+        entry_font=("Segoe UI", 11),
+        entry_height: int = 28,
+        show_advanced: bool = False,
+        advanced_text: str = "Avanzado",
+    ):
         super().__init__(parent)
         self.title(title)
         self.text = text
         self.initial_value = initial_value
         self.result = None
+        self._entry_font = entry_font
+        self._entry_height = entry_height
+        self._show_advanced = show_advanced
+        self._advanced_text = advanced_text
         
-        self.geometry("300x150")
+        if self._show_advanced:
+            self.geometry("500x200")
+        else:
+            self.geometry("450x180")
         self.resizable(False, False)
         
         # Make modal
@@ -23,6 +40,8 @@ class CenteredInputDialog(ctk.CTkToplevel):
         
         self._setup_ui()
         self.center_window()
+
+        self.bind("<Escape>", self._on_cancel)
         
         self.wait_window()
 
@@ -59,7 +78,7 @@ class CenteredInputDialog(ctk.CTkToplevel):
         # Explicit text color to ensure visibility
         ctk.CTkLabel(self, text=self.text, text_color=("black", "white"), font=("Segoe UI", 11)).grid(row=0, column=0, padx=20, pady=(30, 10))
         
-        self.entry = ctk.CTkEntry(self, font=("Segoe UI", 11), corner_radius=1)
+        self.entry = ctk.CTkEntry(self, font=self._entry_font, height=self._entry_height, corner_radius=1)
         self.entry.grid(row=1, column=0, padx=20, pady=10, sticky="ew")
         if self.initial_value:
             self.entry.insert(0, self.initial_value)
@@ -71,19 +90,31 @@ class CenteredInputDialog(ctk.CTkToplevel):
         self.after(50, self._set_focus_and_select)
         
         btn_frame = ctk.CTkFrame(self, fg_color="transparent")
-        btn_frame.grid(row=2, column=0, padx=20, pady=20)
+        btn_frame.grid(row=2, column=0, padx=20, pady=20, sticky="ew")
         
-        ctk.CTkButton(btn_frame, text="OK", width=100, command=self._on_ok, **get_button_style("primary")).pack(side="left", padx=5)
+        if self._show_advanced:
+            ctk.CTkButton(
+                btn_frame,
+                text=self._advanced_text,
+                width=110,
+                command=self._on_advanced_clicked,
+                **get_button_style("secondary"),
+            ).pack(side="left", padx=5)
+        
+        ctk.CTkButton(btn_frame, text="OK", width=100, command=self._on_ok, **get_button_style("primary")).pack(side="right", padx=5)
         ctk.CTkButton(btn_frame, text="Cancel", width=100, command=self._on_cancel, **get_button_style("secondary")).pack(side="right", padx=5)
+
+    def _on_advanced_clicked(self):
+        self.result = "__advanced__"
+        self.destroy()
         
     def _set_focus_and_select(self):
         """Set focus to entry and select all text"""
         self.entry.focus_force()
-        if self.initial_value:
-            # Select all text so user can start typing immediately
-            self.entry.select_range(0, tk.END)
-            # Move cursor to end (selection will still be active)
-            self.entry.icursor(tk.END)
+        # Seleccionar todo el texto para que el usuario pueda empezar a escribir inmediatamente
+        self.entry.select_range(0, tk.END)
+        # Mover cursor al final (la selección seguirá activa)
+        self.entry.icursor(tk.END)
     
     def _on_ok(self, event=None):
         self.result = self.entry.get()
@@ -117,6 +148,8 @@ class SectionNamesEditorDialog(ctk.CTkToplevel):
         
         self._setup_ui()
         self.center_window()
+
+        self.bind("<Escape>", lambda e: self.destroy())
         
     def center_window(self):
         self.update_idletasks()
@@ -297,7 +330,8 @@ class ProgressDialog(ctk.CTkToplevel):
         # Cola para comunicación entre hilos
         self._queue = queue.Queue()
         
-        self.geometry("400x150")
+        # Tamaño aumentado para mejor visibilidad
+        self.geometry("500x180")
         self.resizable(False, False)
         
         # Modal
@@ -309,6 +343,8 @@ class ProgressDialog(ctk.CTkToplevel):
         
         self._setup_ui()
         self.center_window()
+
+        self.bind("<Escape>", lambda e: self._on_close_request())
         
         # Iniciar tarea si se proporcionó
         if self._task:
@@ -345,12 +381,12 @@ class ProgressDialog(ctk.CTkToplevel):
             self, 
             text=self._message,
             font=("Segoe UI", 11),
-            wraplength=350
+            wraplength=450
         )
         self.message_label.grid(row=0, column=0, padx=20, pady=(20, 10), sticky="ew")
         
         # Barra de progreso
-        self.progress_bar = ctk.CTkProgressBar(self, width=350)
+        self.progress_bar = ctk.CTkProgressBar(self, width=450)
         self.progress_bar.grid(row=1, column=0, padx=20, pady=10)
         self.progress_bar.set(0)
         
@@ -376,7 +412,7 @@ class ProgressDialog(ctk.CTkToplevel):
             self.cancel_btn.grid(row=3, column=0, pady=(5, 15))
         else:
             # Ajustar altura si no hay botón
-            self.geometry("400x120")
+            self.geometry("500x150")
     
     def _on_close_request(self):
         """Manejar intento de cerrar ventana"""

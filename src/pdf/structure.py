@@ -214,6 +214,20 @@ class SectionManager:
 # DOCUMENT BOX SYSTEM (Staging Area)
 # ============================================================================
 
+@dataclass(frozen=True)
+class PageReference:
+    """
+    Referencia inmutable a una página de un PDF.
+    Almacena la ruta del archivo y el índice de página, permitiendo
+    reconstruir el acceso a la página sin depender de objetos en memoria.
+    """
+    file_path: str      # Ruta absoluta al archivo PDF
+    page_index: int     # Índice de página dentro del PDF (0-based)
+    
+    def __repr__(self):
+        return f"PageRef({Path(self.file_path).name}:{self.page_index})"
+
+
 class BoxState(Enum):
     """State of a document box"""
     LOADING = "loading"      # Currently loading/downloading
@@ -229,23 +243,42 @@ class DocumentBox:
     """
     Base class for document boxes (staging area).
     Represents a document that hasn't been expanded into individual pages yet.
+    
+    IMPORTANTE: Las páginas se almacenan como List[PageReference] para garantizar
+    que las referencias sean inmutables y autocontenidas (no dependen de viewer.documents).
     """
     name: str
     state: BoxState = BoxState.LOADING
-    pages: List = field(default_factory=list)  # Empty until loaded
-    thumbnail: Optional[object] = None  # PIL Image of first page
+    page_refs: List[PageReference] = field(default_factory=list)  # Referencias a páginas (inmutables)
+    thumbnail: Optional[object] = None  # PIL Image de la primera página
     progress: float = 0.0  # 0.0 to 1.0
     future: Optional[asyncio.Future] = None
     metadata: dict = field(default_factory=dict)
     error_message: str = ""
     
+    # COMPATIBILIDAD: Alias para código legacy que usa 'pages'
+    @property
+    def pages(self) -> List[PageReference]:
+        """Alias de compatibilidad para page_refs"""
+        return self.page_refs
+    
+    @pages.setter
+    def pages(self, value: List):
+        """Setter de compatibilidad - convierte automáticamente si es necesario"""
+        self.page_refs = value
+    
+    @property
+    def page_count(self) -> int:
+        """Número de páginas en esta caja"""
+        return len(self.page_refs)
+    
     def is_expanded(self) -> bool:
         """Check if box has been expanded to pages"""
-        return len(self.pages) > 0 and self.state == BoxState.LOADED
+        return len(self.page_refs) > 0 and self.state == BoxState.LOADED
     
     def can_expand(self) -> bool:
         """Check if box is ready to be expanded"""
-        return self.state == BoxState.LOADED and len(self.pages) > 0
+        return self.state == BoxState.LOADED and len(self.page_refs) > 0
     
     def mark_ignored(self):
         """Mark this box to be ignored"""
@@ -254,7 +287,7 @@ class DocumentBox:
     def unmark(self):
         """Unmark this box"""
         if self.state == BoxState.MARKED:
-            self.state = BoxState.LOADED if self.pages else BoxState.LOADING
+            self.state = BoxState.LOADED if self.page_refs else BoxState.LOADING
     
     def cancel(self):
         """Cancel loading operation"""
@@ -267,29 +300,72 @@ class DocumentBox:
         self.state = BoxState.FAILED
         self.error_message = error_msg
     
-    def set_loaded(self, pages: List):
-        """Mark as successfully loaded"""
-        self.pages = pages
+    def set_loaded_refs(self, refs: List[PageReference], thumbnail=None):
+        """
+        Marca la caja como cargada con referencias de página.
+        
+        Args:
+            refs: Lista de PageReference
+            thumbnail: PIL Image opcional de la primera página
+        """
+        self.page_refs = refs
         self.state = BoxState.LOADED
         self.progress = 1.0
-        # Set thumbnail to first page if available
-        if pages:
-            # Generate static thumbnail immediately to avoid keeping fitz.Page reference in thumbnail
+        self.thumbnail = thumbnail
+    
+    def set_loaded(self, pages: List, file_path: str = None):
+        """
+        Marca la caja como cargada (compatibilidad con código legacy).
+        
+        Si pages contiene objetos fitz.Page y se proporciona file_path,
+        se convierten automáticamente a PageReference.
+        """
+        # Detectar tipo de páginas y convertir si es necesario
+        if pages and len(pages) > 0:
             first_page = pages[0]
-            # Check for get_pixmap safe way (duck typing)
+            
+            # Caso 1: Ya son PageReference
+            if isinstance(first_page, PageReference):
+                self.page_refs = pages
+                self.state = BoxState.LOADED
+                self.progress = 1.0
+                return
+            
+            # Caso 2: Son objetos fitz.Page - convertir a PageReference
             if hasattr(first_page, 'get_pixmap'):
-                 try:
-                     # Use fitz to get pixmap
-                     pix = first_page.get_pixmap(dpi=72)
-                     # Convert to PIL Image
-                     from PIL import Image
-                     self.thumbnail = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-                 except Exception:
-                     # Fallback if conversion fails
-                     self.thumbnail = None
+                # Generar thumbnail antes de convertir
+                try:
+                    pix = first_page.get_pixmap(dpi=72)
+                    from PIL import Image
+                    self.thumbnail = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                except Exception:
+                    self.thumbnail = None
+                
+                # Convertir a PageReference si tenemos file_path
+                if file_path:
+                    self.page_refs = [
+                        PageReference(file_path=str(file_path), page_index=i)
+                        for i in range(len(pages))
+                    ]
+                else:
+                    # Sin file_path, guardar temporalmente como lista legacy
+                    # (esto se manejará en la migración)
+                    self.page_refs = pages
+            
+            # Caso 3: Son tuplas (doc_idx, page_num) - formato legacy
+            elif isinstance(first_page, tuple) and len(first_page) == 2:
+                # Guardar como está, se convertirá durante la migración
+                self.page_refs = pages
+            
+            # Caso 4: Otro tipo (imagen, etc.)
             else:
-                 # Assume it's already an image or None
-                 self.thumbnail = first_page
+                self.page_refs = pages
+                self.thumbnail = first_page if not isinstance(first_page, tuple) else None
+        else:
+            self.page_refs = []
+        
+        self.state = BoxState.LOADED
+        self.progress = 1.0
 
     def __hash__(self):
         return id(self)
@@ -315,8 +391,11 @@ class RemoteDocumentBox(DocumentBox):
     source: str = "unknown"  # 'ove' or 'acex'
     document_id: str = ""
     download_url: str = ""
-    retries_left: int = 1  # Auto-retries allowed
+    retries_left: int = 1  # Auto-retries allowed (Total 3 attempts)
+    file_path: Path = None  # Ruta al PDF descargado (se establece tras descarga exitosa)
     
     def __post_init__(self):
         self.metadata['source'] = self.source
         self.metadata['document_id'] = self.document_id
+        if self.file_path:
+            self.metadata['path'] = str(self.file_path)

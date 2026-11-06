@@ -443,6 +443,7 @@ class VirtualLayout:
         
         return start_idx or 0, end_idx or 0
 
+
 class VirtualGrid(ctk.CTkFrame):
     """
     Virtualized Grid for displaying thumbnails.
@@ -484,18 +485,27 @@ class VirtualGrid(ctk.CTkFrame):
         
         self._header_hit_zones = {} # (x1, y1, x2, y2) -> section object
         self._header_items = {} # item_id -> section object (for robust hit testing)
+
+        # Indicador visual para el reordenado de secciones desde el sidebar.
+        # Guardamos la coordenada Y en coordenadas del canvas (mundo) para poder dibujarla en redraw().
+        self._section_drag_indicator_y: Optional[float] = None
         
         
         
         # Callbacks
         self.on_header_rename_request: Optional[Callable[[object], None]] = None
         self.on_header_right_click: Optional[Callable[[object, object], None]] = None # (section, event)
+        self.on_box_right_click: Optional[Callable[[int, object], None]] = None # (box_index, event) - clic derecho en nombre de caja
         
         # Document Box State (Staging Area)
         self.document_boxes: List = []  # List of DocumentBox instances
         self.box_mode: bool = False  # True when displaying boxes, False when displaying pages
         self.box_sizes: List[Tuple[int, int]] = []  # Sizes for boxes
         self.box_images: Dict[int, ImageTk.PhotoImage] = {}  # Cached box images
+        # Tamaño de cajas configurable (zoom independiente del de miniaturas).
+        # Base: 200px de alto = 100%. Aspect ratio 3:4 (ancho=0.75*alto).
+        self.box_thumbnail_size = 200  # Target height for boxes (px)
+        self.base_box_size = 200       # Base size for percentage calculation
         
         self._load_resources()
         
@@ -507,6 +517,10 @@ class VirtualGrid(ctk.CTkFrame):
         self.pending_click_index: Optional[int] = None
         self.pending_click_event = None
         
+        # Keyboard Move State (tecla M para mover páginas/cajas)
+        self.keyboard_move_mode: bool = False
+        self.keyboard_move_start_indices: set[int] = set()
+        
         # Callbacks
         self.on_request_image: Optional[Callable[[int, int], Image.Image]] = None
         self.on_selection_change: Optional[Callable[[], None]] = None
@@ -515,6 +529,7 @@ class VirtualGrid(ctk.CTkFrame):
         self.on_drag_motion: Optional[Callable[[int, object], None]] = None
         self.on_drag_end: Optional[Callable[[int, object], None]] = None
         self.on_split_request: Optional[Callable[[int], None]] = None
+        self.on_box_hover: Optional[Callable[[Optional[int]], None]] = None
         
         # Async rendering system
         self._render_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="ThumbnailRender")
@@ -544,6 +559,8 @@ class VirtualGrid(ctk.CTkFrame):
         # Sidebar
         self.sidebar = SyncedSidebar(self, width=40)
         self.sidebar.grid(row=0, column=0, sticky="ns")
+        # Mostrar indicador de inserción también en el canvas principal (miniaturas).
+        self.sidebar.on_section_drag_indicator = self._set_section_drag_indicator
         
         # Canvas
         self.canvas = tk.Canvas(
@@ -957,6 +974,11 @@ class VirtualGrid(ctk.CTkFrame):
 
     def set_sections(self, sections: List['Section']):
         """Update sections and refresh layout"""
+        # BLINDAJE: en modo cajas el grid no muestra secciones. Ignorar intentos
+        # de reinyección (p.ej. _refresh_sidebar_after_dialog tras Guardar como PDF).
+        if self.box_mode:
+            log.warning("set_sections ignorado: el grid está en modo cajas (box_mode)")
+            return
         self.sections = sections
         self._update_layout()
         self.redraw()
@@ -995,9 +1017,9 @@ class VirtualGrid(ctk.CTkFrame):
         if hasattr(self, 'canvas'):
             self.canvas.configure(cursor="")
         
-        # Calculate box sizes (fixed size for all boxes)
-        box_width = 150
-        box_height = 200
+        # Tamaño de cajas configurable (zoom independiente). Aspect ratio 3:4.
+        box_height = self.box_thumbnail_size
+        box_width = round(box_height * 0.75)
         self.box_sizes = [(box_width, box_height) for _ in boxes]
         self.item_sizes = self.box_sizes.copy()
         self.aspect_ratios = [box_width / box_height for _ in boxes]
@@ -1016,6 +1038,44 @@ class VirtualGrid(ctk.CTkFrame):
         # Update layout
         self._update_layout()
         self.redraw()
+    
+    def set_box_thumbnail_size(self, size: int):
+        """Update box thumbnail size (zoom for box mode).
+        Recalcula box_sizes con aspect ratio 3:4 y redibuja.
+        """
+        self.box_thumbnail_size = size
+        
+        if not self.document_boxes:
+            # Sin cajas cargadas: solo guardar el tamaño para cuando se carguen
+            return
+        
+        box_height = size
+        box_width = round(box_height * 0.75)
+        self.box_sizes = [(box_width, box_height) for _ in self.document_boxes]
+        self.item_sizes = self.box_sizes.copy()
+        self.aspect_ratios = [box_width / box_height for _ in self.document_boxes]
+        
+        # Limpiar caché de imágenes de caja (single-level) para forzar re-render
+        self.box_images.clear()
+        
+        # Limpiar caches de overlays si existen
+        if hasattr(self, '_selection_overlay_cache'):
+            self._selection_overlay_cache.clear()
+        if hasattr(self, '_hover_overlay_cache'):
+            self._hover_overlay_cache.clear()
+        if hasattr(self, '_header_bg_cache'):
+            self._header_bg_cache.clear()
+        
+        # Limpiar tracking de objetos dibujados (zoom requiere recrear todo)
+        if hasattr(self, 'canvas'):
+            self._clear_all_drawn_items()
+        
+        # Recalcular layout y redibujar
+        if hasattr(self, 'layout'):
+            self._update_layout()
+        
+        if hasattr(self, 'canvas'):
+            self.redraw()
     
     def exit_box_mode(self):
         """
@@ -1310,6 +1370,9 @@ class VirtualGrid(ctk.CTkFrame):
         
         # Clear section headers (ghosting fix)
         self.canvas.delete("section_header")
+
+        # Limpiar indicador de inserción de secciones (se dibuja al final si aplica)
+        self.canvas.delete("section_drag_indicator")
         
         # Limpiar indicadores de corte anteriores
         for cut_id in self._cut_indicator_ids:
@@ -1385,8 +1448,51 @@ class VirtualGrid(ctk.CTkFrame):
         # 6. Draw Section Headers in Continuous Mode
         if self.continuous_mode and self.sections and not self.box_mode:
             self._draw_section_headers(scroll_y, view_height)
+
+        # 7. Indicador de inserción de secciones (desde sidebar)
+        if self._section_drag_indicator_y is not None and not self.box_mode:
+            self._draw_section_drag_indicator()
         
         self._last_visible_range = (start_idx, end_idx)
+
+
+    def _set_section_drag_indicator(self, y_line: Optional[float]):
+        """Callback del sidebar: establece/limpia el indicador de inserción.
+
+        Args:
+            y_line: coordenada Y del indicador en coordenadas de canvas (mundo), o None para limpiar.
+        """
+        self._section_drag_indicator_y = y_line
+        # Redibujar para que el indicador aparezca/desaparezca al instante.
+        self.redraw()
+
+    def _draw_section_drag_indicator(self):
+        """Dibuja una línea horizontal a lo largo del área de miniaturas para previsualizar inserción."""
+        y = self._section_drag_indicator_y
+        if y is None:
+            return
+
+        width = self.canvas.winfo_width()
+        if width <= 0:
+            return
+
+        # Usar exactamente el mismo estilo visual que el indicador vertical de drop.
+        # (_draw_drop_indicator) pero en horizontal.
+        bar_height = 26
+        bar_width = max(1, int(width))
+
+        # Centramos el indicador en la coordenada Y.
+        y_top = int(y - (bar_height / 2))
+
+        bar_img = Image.new('RGBA', (bar_width, bar_height), (234, 234, 250, 180))
+        bar_photo = ImageTk.PhotoImage(bar_img)
+
+        # Mantener referencia para evitar garbage collection (mismo patrón que _draw_drop_indicator).
+        if not hasattr(self, '_drop_line_refs'):
+            self._drop_line_refs = []
+        self._drop_line_refs.append(bar_photo)
+
+        self.canvas.create_image(0, y_top, image=bar_photo, anchor="nw", tags="section_drag_indicator")
 
 
     def _draw_empty_state(self):
@@ -1457,6 +1563,37 @@ class VirtualGrid(ctk.CTkFrame):
                 fill=text_color,
                 anchor="w"
             )
+
+        # Firma sutil también en estado vacío
+        self._draw_signature()
+
+    def _draw_signature(self):
+        """Dibuja firma sutil en la esquina inferior derecha del canvas.
+        
+        Usa un color apenas distinguible del fondo para que sea discreta
+        pero legible si se mira con atención.
+        """
+        # Limpiar firma anterior
+        self.canvas.delete("signature")
+        
+        # Posición: esquina inferior derecha del área visible del canvas
+        width = self.canvas.winfo_width()
+        height = self.canvas.winfo_height()
+        if width < 50 or height < 50:
+            return
+        
+        # Color apenas distinguible del fondo oscuro (#1e1e1e)
+        sig_color = "#2a2a2a"
+        
+        self.canvas.create_text(
+            width - 15,
+            height - 11,
+            text="Jose M. Luis",
+            font=("Segoe UI", 10),
+            fill=sig_color,
+            anchor="se",
+            tags="signature"
+        )
 
     def _draw_section_headers(self, scroll_y, view_height):
         """Draw section headers with Color Tabs and Glassmorphism effect"""
@@ -1934,7 +2071,10 @@ class VirtualGrid(ctk.CTkFrame):
                 thumb_source = box.thumbnail
                 if hasattr(thumb_source, 'get_pixmap'):
                     try:
-                        pix = thumb_source.get_pixmap(dpi=72)
+                        # DPI proporcional al zoom: a tamaños grandes, más resolución
+                        # para evitar degradación. Base 200px = 72 dpi.
+                        render_dpi = max(72, int(72 * self.box_thumbnail_size / self.base_box_size))
+                        pix = thumb_source.get_pixmap(dpi=render_dpi)
                         img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
                     except Exception as e:
                         log.warning(f"Error rendering box thumbnail (document likely closed): {e}")
@@ -2018,6 +2158,34 @@ class VirtualGrid(ctk.CTkFrame):
             base_ids.append(self.canvas.create_text(x + w//2, text_y + 15, text=page_count_text,
                                   fill=box_colors["text_secondary"], font=("Segoe UI", 9)))
         
+        # Corner Ribbon para cajas fusionadas (dibujado al final para quedar por encima)
+        if hasattr(box, 'metadata') and box.metadata.get('merged_file_paths'):
+            # Rectángulo horizontal pequeño en el lado derecho superior
+            ribbon_width = 30  # Más largo
+            ribbon_height = 18
+            ribbon_y_offset = 4  # 2px más arriba
+
+            
+            ribbon_x = x + w - (ribbon_width + ribbon_y_offset)
+            ribbon_y = y + ribbon_y_offset
+            
+            # Rectángulo verde (folded ribbon style)
+            base_ids.append(self.canvas.create_rectangle(
+                ribbon_x, ribbon_y,
+                ribbon_x + ribbon_width, ribbon_y + ribbon_height,
+                fill="#4CAF50",  # Verde
+                outline=""
+            ))
+            
+            # Icono "F" (Fusion) centrado en el ribbon
+            base_ids.append(self.canvas.create_text(
+                ribbon_x + ribbon_width // 2, 
+                ribbon_y + ribbon_height // 2,
+                text="F",
+                fill="white",
+                font=("Segoe UI", 11, "bold")
+            ))
+        
         # Guardar todos los IDs de la base
         self._drawn_items[index]["base"] = base_ids[0] if base_ids else None
         self._drawn_items[index]["_base_ids"] = base_ids
@@ -2067,6 +2235,51 @@ class VirtualGrid(ctk.CTkFrame):
 
     def _on_motion(self, event):
         """Handle hover effects"""
+        # Si estamos en modo movimiento con teclado, actualizar abanico y drop indicator
+        if self.keyboard_move_mode:
+            self.drag_fan.update_position(event.x, event.y)
+            
+            # Calcular drop indicator igual que en drag normal
+            cx = self.canvas.canvasx(event.x)
+            cy = self.canvas.canvasy(event.y)
+            index = self.layout.get_item_at(cx, cy)
+            
+            # Reset explicit section target
+            self.drop_target_section = None
+            
+            # Manejar drop al final de documento o secciones (igual que en _on_drag)
+            if index == -1 and self.item_count > 0:
+                # 1. Check Document End
+                lx, ly, lw, lh = self.layout.positions[-1]
+                if cy > ly + lh:
+                    index = self.item_count
+                elif cy >= ly and cx > lx + lw / 2:
+                    index = self.item_count
+                
+                # 2. Check Section Ends (if not doc end)
+                if index == -1 and self.sections:
+                    for section in self.sections:
+                        last_page_idx = section.end_page - 1
+                        if 0 <= last_page_idx < len(self.layout.positions):
+                            px, py, pw, ph = self.layout.positions[last_page_idx]
+                            if py <= cy <= py + ph and cx > px + pw:
+                                index = section.end_page
+                                self.drop_target_section = section
+                                break
+            
+            # Actualizar drop indicator (igual que en _on_drag)
+            # Calculate visual indicator index (suppress if using special section target)
+            visual_indicator = index
+            if self.drop_target_section:
+                visual_indicator = -1
+                
+            if index != -1 and (visual_indicator != self.drop_indicator_index or getattr(self, '_last_drop_section', None) != self.drop_target_section):
+                self.drop_indicator_index = visual_indicator
+                self._last_drop_section = self.drop_target_section
+                self.redraw()
+            
+            return
+        
         cx = self.canvas.canvasx(event.x)
         cy = self.canvas.canvasy(event.y)
         
@@ -2088,9 +2301,21 @@ class VirtualGrid(ctk.CTkFrame):
         needs_redraw = False
         
         # Update hover item (for gray overlay effect)
-        if self.hover_item_index != index:
+        hover_changed = self.hover_item_index != index
+        if hover_changed:
             self.hover_item_index = index
             needs_redraw = True
+
+        # Notificamos cambios de hover para que la UI pueda mostrar tooltip temporal
+        # (p.ej. motivo de error en cajas FAILED dentro de la barra de estado).
+        if hover_changed and self.on_box_hover:
+            try:
+                if self.box_mode and index != -1:
+                    self.on_box_hover(index)
+                else:
+                    self.on_box_hover(None)
+            except Exception:
+                pass
         
         # Handle Cut Mode (Gap detection)
         if self.cut_mode:
@@ -2209,14 +2434,116 @@ class VirtualGrid(ctk.CTkFrame):
         if thumbnails:
             self.drag_fan.start(thumbnails)
 
+    def start_keyboard_move(self) -> bool:
+        """
+        Inicia el modo de movimiento con teclado (tecla M).
+        Activa el efecto abanico y espera un click para completar el movimiento.
+        Retorna True si se activó correctamente, False si no hay selección.
+        """
+        # Verificar que hay elementos seleccionados
+        if not self.selected_indices:
+            return False
+        
+        # Ignorar si ya hay un drag activo con ratón
+        if self.drag_active:
+            return False
+        
+        # Ignorar si estamos en modo corte
+        if self.cut_mode:
+            return False
+        
+        # Activar modo movimiento con teclado
+        self.keyboard_move_mode = True
+        self.keyboard_move_start_indices = self.selected_indices.copy()
+        
+        # Iniciar efecto abanico (detecta automáticamente box_mode vs page_mode)
+        self._start_drag_fan()
+        
+        # Cambiar cursor para indicar modo movimiento
+        self.canvas.config(cursor="fleur")
+        
+        return True
+    
+    def cancel_keyboard_move(self):
+        """
+        Cancela el modo de movimiento con teclado (ESC).
+        Detiene el abanico y restaura el estado normal.
+        """
+        if not self.keyboard_move_mode:
+            return
+        
+        # Detener efecto abanico
+        self.drag_fan.stop()
+        
+        # Restaurar cursor normal
+        self.canvas.config(cursor="")
+        
+        # Resetear estado
+        self.keyboard_move_mode = False
+        self.keyboard_move_start_indices = set()
+        self.drop_indicator_index = -1
+        
+        # Redibujar para limpiar indicadores
+        self.redraw()
+
     def _on_leave(self, event):
         """Handle mouse leaving canvas - clear hover effects"""
         if self.hover_item_index != -1:
             self.hover_item_index = -1
             self.redraw()
 
+        # Al salir del canvas limpiamos cualquier tooltip asociado al hover de cajas.
+        if self.on_box_hover:
+            try:
+                self.on_box_hover(None)
+            except Exception:
+                pass
+
     def _on_click(self, event):
         """Handle single click - Selection"""
+        # Si estamos en modo movimiento con teclado, completar el movimiento
+        if self.keyboard_move_mode:
+            cx = self.canvas.canvasx(event.x)
+            cy = self.canvas.canvasy(event.y)
+            index = self.layout.get_item_at(cx, cy)
+            
+            # Calcular índice de destino (igual que en _on_release para drag)
+            self.drop_target_section = None
+            
+            if index == -1 and self.item_count > 0:
+                lx, ly, lw, lh = self.layout.positions[-1]
+                if cy > ly + lh:
+                    index = self.item_count
+                elif cy >= ly and cx > lx + lw / 2:
+                    index = self.item_count
+                    
+                if index == -1 and self.sections:
+                    for section in self.sections:
+                        last_page_idx = section.end_page - 1
+                        if 0 <= last_page_idx < len(self.layout.positions):
+                            px, py, pw, ph = self.layout.positions[last_page_idx]
+                            if py <= cy <= py + ph and cx > px + pw:
+                                index = section.end_page
+                                self.drop_target_section = section
+                                break
+            
+            # Completar el movimiento llamando al callback on_drag_end
+            if self.on_drag_end and index != -1:
+                # Simular drag_start_index para que on_drag_end funcione
+                self.drag_start_index = list(self.keyboard_move_start_indices)[0] if self.keyboard_move_start_indices else -1
+                self.on_drag_end(index, event)
+            
+            # Limpiar estado de modo movimiento con teclado
+            self.drag_fan.stop()
+            self.canvas.config(cursor="")
+            self.keyboard_move_mode = False
+            self.keyboard_move_start_indices = set()
+            self.drop_indicator_index = -1
+            self.drop_target_section = None
+            self.redraw()
+            
+            return
+        
         # Close any active menu
         if hasattr(self, 'context_menu'):
             try:
@@ -2366,6 +2693,18 @@ class VirtualGrid(ctk.CTkFrame):
                         mock = EventMock(event.x_root, event.y_root)
                         self.after(50, lambda s=section, m=mock: self.on_header_right_click(s, m))
                     return
+        
+        # Check for right-click on box name area (Box Mode)
+        if self.box_mode:
+            index = self.layout.get_item_at(cx, cy)
+            if index != -1:
+                x, y, w, h = self.layout.positions[index]
+                # Si el clic está en los últimos 40 píxeles (área del nombre)
+                if cy > y + h - 40:
+                    if self.on_box_right_click:
+                        log.info(f"Right-click on box name area: index {index}")
+                        self.on_box_right_click(index, event)
+                        return
         
         index = self.layout.get_item_at(cx, cy)
         # Always show context menu, even in empty space (index = -1)

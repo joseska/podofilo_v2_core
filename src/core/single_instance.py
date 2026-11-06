@@ -9,16 +9,20 @@ log = logging.getLogger(__name__)
 
 PORT = 13013  # Puerto interno para Podofilo V2
 
-def send_to_instance(files):
-    """
-    Intenta enviar una lista de archivos a una instancia ya abierta.
-    Retorna True si tuvo éxito, False si no hay ninguna instancia escuchando.
-    """
+def send_to_instance(payload):
+    """Intenta enviar un mensaje a una instancia ya abierta."""
     try:
+        if isinstance(payload, (list, tuple)):
+            msg = {"files": [str(f) for f in payload] }
+        elif isinstance(payload, dict):
+            msg = payload
+        else:
+            msg = {"files": [] }
+
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.settimeout(1.0)
             s.connect(('127.0.0.1', PORT))
-            data = json.dumps({"files": [str(f) for f in files]})
+            data = json.dumps(msg)
             s.sendall(data.encode('utf-8'))
             return True
     except (ConnectionRefusedError, socket.timeout):
@@ -53,14 +57,29 @@ class InstanceServer:
             while self.running:
                 conn, addr = self.server_sock.accept()
                 with conn:
-                    data = conn.recv(1024 * 10) # 10KB sobra para rutas
+                    chunks = []
+                    try:
+                        conn.settimeout(0.2)
+                    except Exception:
+                        pass
+                    while True:
+                        try:
+                            part = conn.recv(4096)
+                        except socket.timeout:
+                            break
+                        if not part:
+                            break
+                        chunks.append(part)
+                        if len(part) < 4096:
+                            break
+
+                    data = b"".join(chunks)
                     if data:
                         try:
                             msg = json.loads(data.decode('utf-8'))
-                            files = msg.get("files", [])
-                            # Siempre llamamos al callback, si no hay archivos es para enfocar
+                            files = msg.get("files", []) if isinstance(msg, dict) else []
                             log.info(f"Instancia única activada. Archivos: {len(files)}")
-                            self.app_callback(files)
+                            self.app_callback(msg)
                         except Exception as e:
                             log.error(f"Error procesando mensaje de instancia: {e}")
         except Exception as e:

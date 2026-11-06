@@ -79,8 +79,11 @@ class PdfDocument:
         pix = page.get_pixmap(matrix=mat, alpha=False)
         
         # Convert to PIL Image
+        # IMPORTANTE: Usar load() para forzar carga completa en memoria
+        # Esto evita errores "truncated" cuando PIL intenta lazy-load después
         img_data = pix.tobytes("ppm")
         img = Image.open(io.BytesIO(img_data))
+        img.load()  # Forzar carga completa antes de que BytesIO se pierda
         
         return img
     

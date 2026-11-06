@@ -1,9 +1,12 @@
 # Carpeta de la V1 de Podofilo. solo para referencias.
 V1/
-tests/
 
 # OVE Plugin (Private)
 src/extensions/ove/
+
+# La suite de tests SÍ es publica en el open-core.
+# (tests/ ya no se ignora; solo los tests de la extension OVE,
+#  test_ove_payload_classification.py, se copian al repo dev)
 
 # Python bytecode / cache
 __pycache__/

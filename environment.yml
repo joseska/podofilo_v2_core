@@ -1,4 +1,8 @@
-# Podofilo V2 - Conda Environment Configuration
+# Podofilo V2 (CORE PUBLICO) - Conda Environment Configuration
+#
+# Solo dependencias del core (open core, sin extension OVE).
+# Las deps de la extension OVE estan en requirements_ove.txt.
+# Ver docs/SYNC.md para la politica de sincronizacion dev -> core.
 name: podofilo_v2_core
 channels:
   - defaults
@@ -6,22 +10,21 @@ channels:
 dependencies:
   - python=3.14
   - pip
+  - pyinstaller>=6.3.0
   - pip:
     - customtkinter>=5.2.0
     - pillow>=10.1.0
     - PyMuPDF>=1.23.0
     # - pikepdf>=8.10.0
-    - opencv-python>=4.9.0
-    - pyzbar>=0.1.9
+    # - opencv-python>=4.9.0   # no se usa (ver requirements.txt)
+    # - pyzbar>=0.1.9          # no se usa (ver requirements.txt)
     # - numpy>=1.26.0
+    - httpx>=0.27.0           # updater (src/core/updater.py)
+    - tkinterdnd2>=0.3.0      # drag & drop
+    - watchdog>=3.0.0
+    - python-dateutil>=2.8.2
+    # Extension OVE (privada, solo si copias src/extensions/ove):
     # - playwright>=1.40.0
-    # - httpx>=0.27.0
     # - pypac>=0.16.0
-    # - Py3AMF>=0.8.5
     # - lxml>=5.0.0
     # - keyring>=25.0.0
-    - watchdog>=3.0.0
-    - aiofiles>=23.2.0
-    - python-dateutil>=2.8.2
-    - requests>=2.31.0
-    - pyinstaller>=6.3.0

@@ -54,6 +54,39 @@ class ConfigManager:
                 return json.load(f)
         except Exception:
             return self._get_default_config()
+
+    def _load_config_from_disk(self) -> Dict[str, Any]:
+        """Carga el JSON de configuración desde disco.
+
+        Nota importante:
+        - Se usa para evitar pérdida de datos cuando existen varias instancias de ConfigManager
+          (por ejemplo, un diálogo crea su propio ConfigManager y guarda una clave nueva).
+        - En caso de error devolvemos un dict vacío para que el 'merge' sea seguro.
+        """
+        if not self.config_file.exists():
+            return {}
+
+        try:
+            with open(self.config_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                return data if isinstance(data, dict) else {}
+        except Exception:
+            return {}
+
+    def reload(self):
+        """Recarga la configuración desde disco y la fusiona con los valores por defecto.
+
+        Esto permite que una instancia 'antigua' vea cambios guardados por otra instancia
+        durante la misma ejecución (p.ej. asignaciones de firma aprendidas en OVE).
+        """
+        disk = self._load_config_from_disk()
+        if isinstance(disk, dict) and disk:
+            self.config = dict(disk)
+
+        # Asegurar nuevas claves por defecto sin machacar valores existentes.
+        defaults = self._get_default_config()
+        for key, val in defaults.items():
+            self.config.setdefault(key, val)
             
     def _get_default_config(self) -> Dict[str, Any]:
         """Get default configuration"""
@@ -79,22 +112,68 @@ class ConfigManager:
                 "is_maximized": False,
             },
             "thumbnail_size": 150,
+            "box_thumbnail_size": 200,  # Zoom de cajas (box mode). Base 200px = 100%.
             "continuous_mode": False,
             # Default watch path: %LOCALAPPDATA%\oviscapto
             "watched_folders": [str(Path.home() / "AppData" / "Local" / "oviscapto")],
-            "watch_auto_delete": False,
             "watch_patterns": ["*.pdf"],
             "last_loaded_dir": str(Path.home() / "Documents"),
+            "last_save_dir": str(Path.home() / "Documents"),
+            # Por defecto activamos la eliminación de firmas para que cualquier exportación/subida
+            # salga sin campos de firma, salvo que el usuario lo desactive explícitamente.
+            "remove_signatures_on_save": True,
+            "ove_no_descargar_copias_autenticas": False,
+            # --- Auto-update (GitHub Releases públicas de joseska/PodofiloV2-releases) ---
+            # Timestamp UTC (ISO 8601) del último check automático de actualizaciones.
+            # El auto-check se ejecuta como mucho una vez al día al iniciar la app.
+            "last_update_check": "",
+            # Tag remoto que el usuario ha decidido ignorar (no se vuelve a mostrar
+            # el diálogo de update para esa versión concreta). Void = ninguno.
+            "ignored_update_version": "",
         }
         
     def save(self):
         """Save configuration to file"""
         try:
+            # IMPORTANTE: Merge con el JSON actual en disco para no borrar claves añadidas
+            # por otras instancias (ej: doc_signature_map guardado desde un diálogo).
+            disk = self._load_config_from_disk()
+            if isinstance(disk, dict) and disk:
+                merged = dict(disk)
+                # self.config tiene prioridad (si el usuario cambió algo en esta instancia).
+                merged.update(self.config)
+                self.config = merged
+
+            # Asegurar que el archivo siempre tenga las claves mínimas por defecto.
+            defaults = self._get_default_config()
+            for key, val in defaults.items():
+                self.config.setdefault(key, val)
+
+            # Limpieza de clave legacy: el watcher ahora siempre elimina tras importar,
+            # por lo que esta opción ya no existe ni debe persistirse en el JSON.
+            self.config.pop("watch_auto_delete", None)
+
             with open(self.config_file, 'w', encoding='utf-8') as f:
                 json.dump(self.config, f, indent=4, ensure_ascii=False)
         except Exception as e:
             print(f"Error saving config: {e}")
             
+    def get_last_update_check(self) -> str:
+        """Devuelve el timestamp ISO 8601 (UTC) del último check auto de update."""
+        return self.config.get("last_update_check", "")
+
+    def set_last_update_check(self, timestamp: str):
+        self.config["last_update_check"] = timestamp or ""
+        self.save()
+
+    def get_ignored_update_version(self) -> str:
+        """Tag remoto ignorado por el usuario (no vuelve a mostrar diálogo)."""
+        return self.config.get("ignored_update_version", "")
+
+    def set_ignored_update_version(self, tag: str):
+        self.config["ignored_update_version"] = tag or ""
+        self.save()
+
     def get_section_names(self) -> List[str]:
         """Get list of predefined section names"""
         return self.config.get("section_names", [])
@@ -129,6 +208,16 @@ class ConfigManager:
     def set_last_split_size_mb(self, size_mb: int):
         """Set last used split size in MB"""
         self.config["last_split_size_mb"] = size_mb
+        self.save()
+
+
+    def get_check_pagination(self) -> bool:
+        """Get whether to check if document is paginated before saving"""
+        return self.config.get("check_pagination", False)
+
+    def set_check_pagination(self, value: bool):
+        """Set whether to check if document is paginated before saving"""
+        self.config["check_pagination"] = bool(value)
         self.save()
 
     # --------------------------
@@ -212,6 +301,15 @@ class ConfigManager:
         self.config["thumbnail_size"] = size
         self.save()
 
+    def get_box_thumbnail_size(self) -> int:
+        """Get saved box thumbnail size (zoom level for box mode)"""
+        return self.config.get("box_thumbnail_size", 200)
+
+    def set_box_thumbnail_size(self, size: int):
+        """Set box thumbnail size (zoom level for box mode)"""
+        self.config["box_thumbnail_size"] = size
+        self.save()
+
     # --------------------------
     # View mode settings
     # --------------------------
@@ -254,15 +352,6 @@ class ConfigManager:
             folders.remove(folder)
             self.set_watched_folders(folders)
 
-    def get_watch_auto_delete(self) -> bool:
-        """Get whether to auto-delete imported files"""
-        return self.config.get("watch_auto_delete", False)
-
-    def set_watch_auto_delete(self, enabled: bool):
-        """Set whether to auto-delete imported files"""
-        self.config["watch_auto_delete"] = bool(enabled)
-        self.save()
-
     def get_watch_optimize_import(self) -> bool:
         """Get whether to optimize imported files (compress)"""
         return self.config.get("watch_optimize_import", True)
@@ -299,10 +388,48 @@ class ConfigManager:
 
     def get_doc_signature_map(self) -> Dict[str, str]:
         """Get the map of {document_name: signature_type_name}"""
+        # Recargar desde disco para reflejar asignaciones guardadas por otras instancias
+        # (p.ej. al aprender firmas desde el diálogo de subida OVE).
+        try:
+            self.reload()
+        except Exception:
+            pass
         return self.config.get("doc_signature_map", {})
 
     def set_doc_signature_map(self, signature_map: Dict[str, str]):
         """Set the map of {document_name: signature_type_name}"""
         self.config["doc_signature_map"] = signature_map
+        self.save()
+
+    def get_last_save_dir(self) -> str:
+        """Get the last directory used to save PDF files"""
+        path = self.config.get("last_save_dir")
+        if path and Path(path).exists():
+            return path
+        return str(Path.home() / "Documents")
+
+    def set_last_save_dir(self, directory: str):
+        """Set the last directory used to save PDF files"""
+        if directory:
+            self.config["last_save_dir"] = str(directory)
+            self.save()
+
+    def get_remove_signatures_on_save(self) -> bool:
+        """Get whether to remove digital signatures when saving PDFs"""
+        # Si la clave no existe (config antigua), el comportamiento por defecto es True.
+        return bool(self.config.get("remove_signatures_on_save", True))
+
+    def set_remove_signatures_on_save(self, value: bool):
+        """Set whether to remove digital signatures when saving PDFs"""
+        self.config["remove_signatures_on_save"] = bool(value)
+        self.save()
+
+    def get_ove_no_descargar_copias_autenticas(self) -> bool:
+        """Get whether to avoid downloading authenticated copies from OVE"""
+        return bool(self.config.get("ove_no_descargar_copias_autenticas", False))
+
+    def set_ove_no_descargar_copias_autenticas(self, value: bool):
+        """Set whether to avoid downloading authenticated copies from OVE"""
+        self.config["ove_no_descargar_copias_autenticas"] = bool(value)
         self.save()
 

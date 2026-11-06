@@ -1,4 +1,13 @@
-# Podofilo V2 - Modern Requirements (Python 3.12+)
+# Podofilo V2 (CORE PUBLICO) - Modern Requirements (Python 3.12+)
+#
+# Este requirements es el del CORE PUBLICO (open core, sin extension OVE):
+# contiene UNICAMENTE las dependencias que la app PDF necesita.
+#
+# Las dependencias exclusivas de la extension OVE (playwright, keyring,
+# pypac, lxml, greenlet) estan en requirements_ove.txt y solo se instalan
+# si copias manualmente src/extensions/ove a este repo (ver docs/SYNC.md).
+#
+# Ver docs/SYNC.md para la politica de sincronizacion dev -> core.
 
 # UI Framework
 customtkinter>=5.2.0    # Modern Tkinter UI
@@ -16,10 +25,11 @@ PyMuPDF>=1.23.0         # PDF manipulation (replaces rupdf)
 # Server Communication
 
 # Server Communication
-# playwright>=1.40.0        # Browser automation (Reemplaza a Selenium)
-# httpx>=0.27.0             # Async HTTP (reemplaza aiohttp)
-# pypac>=0.16.0             # Proxy PAC support
-# lxml>=5.0.0               # HTML parsing
+# HTTP (usado por src/core/updater.py; la extension OVE lo usa tambien)
+httpx>=0.27.0
+# playwright>=1.40.0        # Browser automation (Reemplaza a Selenium) [OVE, solo requirements_ove.txt]
+# pypac>=0.16.0             # Proxy PAC support [OVE, solo requirements_ove.txt]
+# lxml>=5.0.0               # HTML parsing [OVE, solo requirements_ove.txt]
 # Py3AMF>=0.8.5             # AMF protocol (Reemplazo moderno de pyamf compatible con Py3.12)
 # yarl>=1.9.0               # URL parsing
 
@@ -27,7 +37,7 @@ PyMuPDF>=1.23.0         # PDF manipulation (replaces rupdf)
 tkinterdnd2>=0.3.0      # Drag and Drop for Tkinter
 
 # Credentials
-# keyring>=25.0.0         # Secure credential storage (Windows Credential Manager)
+# keyring>=25.0.0         # Secure credential storage (Windows Credential Manager) [OVE, solo requirements_ove.txt]
 
 # File Operations
 watchdog>=3.0.0         # File system monitoring
